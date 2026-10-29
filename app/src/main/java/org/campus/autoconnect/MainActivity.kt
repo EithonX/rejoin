@@ -56,7 +56,7 @@ class MainActivity : Activity() {
             })
         }
         label("Campus AutoConnect Lab", 24f)
-        label("v0.6 — FortiGate auto-recovery • improved portal detection", 14f)
+        label("v0.7 — Direct login recovery • stage diagnostics", 14f)
         profile = label("No selected network", 15f)
         scheduler = label("Automatic repair: disabled", 15f)
         info = label("Set up a trusted network first.")
@@ -144,10 +144,16 @@ class MainActivity : Activity() {
                             val logout = LiveSessionTest.logout(applicationContext)
                             Thread.sleep(1600)
                             val succeeded = logout.contains("Server: HTTP/1.1") || logout.contains("Server: HTTP/1.0")
-                            val recovery = if (succeeded) {
-                                SessionEngine.run(applicationContext, userInitiated = true, explicitlyLoggedOut = true)
-                            } else {
-                                "Logout was not confirmed; automatic recovery not forced."
+                            val recovery = try {
+                                if (succeeded) {
+                                    SessionEngine.run(applicationContext, userInitiated = true, explicitlyLoggedOut = true) { stage ->
+                                        runOnUiThread { info.text = "Live test\n" + stage }
+                                    }
+                                } else {
+                                    "Logout was not confirmed; automatic recovery not forced."
+                                }
+                            } catch (e: Exception) {
+                                "Recovery stopped with " + e.javaClass.simpleName
                             }
                             runOnUiThread { info.text = logout + "\n\nRecovery: " + recovery; refreshLabels() }
                         }.start()
@@ -188,7 +194,7 @@ class MainActivity : Activity() {
         Thread {
             val result = if (repair) SessionEngine.run(applicationContext, userInitiated = true)
                 else {
-                    val probe = WifiProbe.probe(applicationContext)
+                    val probe = WifiProbe.probe(applicationContext, allowDns = true)
                     val outcome = probe.status + "; HTTP " + (probe.code?.toString() ?: "none")
                     getSharedPreferences("profile", MODE_PRIVATE).edit()
                         .putString("last_result", outcome)
