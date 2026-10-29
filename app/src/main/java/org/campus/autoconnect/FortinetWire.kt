@@ -36,8 +36,8 @@ object FortinetWire {
         var socket: java.net.Socket? = null
         return try {
             socket = network.socketFactory.createSocket()
-            socket.connect(InetSocketAddress(HOST, PORT), 4500)
-            socket.soTimeout = 4500
+            socket.connect(InetSocketAddress(HOST, PORT), 3500)
+            socket.soTimeout = 3500
             val headers = StringBuilder()
                 .append(method).append(" ").append(path).append(" HTTP/1.1\r\n")
                 .append("Host: ").append(HOST).append(":").append(PORT).append("\r\n")
@@ -85,9 +85,10 @@ object FortinetWire {
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
-    fun submitOnce(network: Network, username: String, password: String): Submission {
+    fun submitOnce(network: Network, username: String, password: String, report: (String) -> Unit = {}): Submission {
+        report("Stage 1/3: Fetching CU login form")
         val login = request(network, "GET", "/login?")
-            ?: return Submission(false, "CU login page unavailable")
+            ?: return Submission(false, "GET /login? failed: no valid HTTP response")
         if (login.code != 200 || !login.body.contains("Firewall Authentication", ignoreCase = true)) {
             return Submission(false, "Unexpected login page; no password sent")
         }
@@ -106,14 +107,16 @@ object FortinetWire {
         val redirect = fields["4tredir"].orEmpty().take(1024)
         val data = "username=" + encode(username) + "&password=" + encode(password) +
             "&magic=" + encode(magic) + "&4Tredir=" + encode(redirect)
+        report("Stage 2/3: Sending authorized CU login form")
         val bytes = data.toByteArray(StandardCharsets.UTF_8)
         val response = request(network, "POST", "/", bytes)
         bytes.fill(0)
-        // HTTP 200/302 means only that FortiGate processed the request, not login success.
-        return if (response != null && response.code in listOf(200, 302, 303)) {
-            Submission(true, "CU received login submission; checking internet")
-        } else {
-            Submission(false, "Login submission did not receive an expected response")
+        // Even if the server closes early, the POST may have been processed.
+        // Connectivity verification is the only success criterion.
+        return when {
+            response == null -> Submission(true, "POST sent; response missing or malformed")
+            response.code in listOf(200, 302, 303) -> Submission(true, "POST submitted; HTTP " + response.code)
+            else -> Submission(false, "POST returned HTTP " + response.code)
         }
     }
 }
