@@ -12,7 +12,7 @@ object SessionEngine {
     private val running = AtomicBoolean(false)
     private const val COOLDOWN_MS = 20 * 60 * 1000L
 
-    fun run(context: Context, userInitiated: Boolean = false): String {
+    fun run(context: Context, userInitiated: Boolean = false, explicitlyLoggedOut: Boolean = false): String {
         if (!running.compareAndSet(false, true)) return "Another check is already running."
         val prefs = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
         fun finish(message: String): String {
@@ -24,8 +24,8 @@ object SessionEngine {
             val state = WifiProbe.probe(context)
             if (!state.matched) return finish(state.status + "; no action")
             if (state.status == "Online") return finish("Online — no authentication needed")
-            if (state.status != "Captive portal detected") {
-                return finish(state.status + " — not an authenticated portal failure")
+            if (state.status != "Captive portal detected" && !explicitlyLoggedOut) {
+                return finish(state.status + " — not a confirmed captive portal")
             }
             if (!prefs.getBoolean("auto_enabled", false) || !prefs.getBoolean("http_opt_in", false)) {
                 return finish("CU portal detected; automatic login is disabled")
@@ -45,9 +45,10 @@ object SessionEngine {
             }
             val again = WifiProbe.probe(context)
             if (again.status == "Online") return finish("Another device restored internet; no login needed")
-            if (again.status != "Captive portal detected") {
-                return finish("Portal no longer confirmed; did not submit credentials")
+            if (again.status != "Captive portal detected" && !explicitlyLoggedOut) {
+                return finish("Portal no longer confirmed; did not submit credentials: " + again.status)
             }
+            if (again.status == "Online") return finish("Already online; no login needed")
 
             // Persist before POST, so a killed process will not cause a login storm.
             prefs.edit().putLong("next_allowed", System.currentTimeMillis() + COOLDOWN_MS)
@@ -57,13 +58,14 @@ object SessionEngine {
                 ?: return finish("Wi-Fi identity unavailable; login cancelled")
             if (!LiveSessionTest.selectedWifiMatches(context)) return finish("Trusted Wi-Fi changed; login cancelled")
             val submitted = FortinetWire.submitOnce(snapshot.network, credentials.username, credentials.password)
-            Thread.sleep(1700)
+            Thread.sleep(2100)
             val verified = WifiProbe.probe(context)
             return if (verified.status == "Online") {
                 prefs.edit().putLong("last_success", System.currentTimeMillis()).apply()
                 finish("Internet restored automatically")
             } else {
-                finish(submitted.description + "; internet not yet verified. No immediate retry.")
+                finish(submitted.description + "; verification: " + verified.status +
+                    "; no immediate retry.")
             }
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
