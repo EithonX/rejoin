@@ -40,7 +40,7 @@ class MainActivity : Activity() {
             })
         }
         text("Campus AutoConnect Lab", 24f)
-        text("v0.2 — Safe session diagnostics. No university credentials or automatic login.", 14f)
+        text("v0.3 — Native Wi-Fi-bound portal reader. Automatic login not enabled.", 14f)
         profile = text("No trusted Wi-Fi")
         info = text("Status: Not tested")
         button("1. Grant Wi-Fi identity permission") {
@@ -77,7 +77,7 @@ class MainActivity : Activity() {
             val result = SessionSimulation.run()
             info.text = result
         }
-        button("5. Inspect CU login form (read-only)") {
+        button("5. Read CU login form (native socket)") {
             info.text = "Inspecting official campus portal on the selected Wi-Fi..."
             Thread {
                 val result = PortalInspector.inspect(applicationContext)
