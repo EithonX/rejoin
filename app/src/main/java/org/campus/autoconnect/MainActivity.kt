@@ -40,7 +40,7 @@ class MainActivity : Activity() {
             })
         }
         text("Campus AutoConnect Lab", 24f)
-        text("v0.1 — Read-only diagnostics. No university credentials or automatic login.", 14f)
+        text("v0.2 — Safe session diagnostics. No university credentials or automatic login.", 14f)
         profile = text("No trusted Wi-Fi")
         info = text("Status: Not tested")
         button("1. Grant Wi-Fi identity permission") {
@@ -73,8 +73,19 @@ class MainActivity : Activity() {
             else info.text = "Grant permission and trust a Wi-Fi first"
             refresh()
         }
+        button("4. Run instant offline expiry simulation") {
+            val result = SessionSimulation.run()
+            info.text = result
+        }
+        button("5. Inspect CU login form (read-only)") {
+            info.text = "Inspecting official campus portal on the selected Wi-Fi..."
+            Thread {
+                val result = PortalInspector.inspect(applicationContext)
+                runOnUiThread { info.text = result }
+            }.start()
+        }
         button("Refresh status") { refresh() }
-        text("This prototype never signs into the campus portal. Background checks are best effort and may be delayed by Android.", 13f)
+        text("Safe mode: no login, logout, password submission or session modification. Offline simulation does not contact CU. Background checks are best effort.", 13f)
         refresh()
     }
 
