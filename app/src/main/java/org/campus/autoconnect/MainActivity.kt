@@ -1,6 +1,9 @@
 package org.campus.autoconnect
 
 import android.Manifest
+import android.app.AlertDialog
+import android.content.Intent
+import android.net.Uri
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -40,7 +43,7 @@ class MainActivity : Activity() {
             })
         }
         text("Campus AutoConnect Lab", 24f)
-        text("v0.3 — Native Wi-Fi-bound portal reader. Automatic login not enabled.", 14f)
+        text("v0.4 — Controlled live session test. No stored credentials or automatic login.", 14f)
         profile = text("No trusted Wi-Fi")
         info = text("Status: Not tested")
         button("1. Grant Wi-Fi identity permission") {
@@ -84,8 +87,43 @@ class MainActivity : Activity() {
                 runOnUiThread { info.text = result }
             }.start()
         }
+        button("6. Live test: log out CU shared session") {
+            AlertDialog.Builder(this)
+                .setTitle("Log out the shared CU connection?")
+                .setMessage("This can disconnect every device using your router until someone signs in again. This test only runs once when you confirm.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Log out") { _, _ ->
+                    info.text = "Requesting university logout over the selected Wi-Fi..."
+                    Thread {
+                        val result = LiveSessionTest.logout(applicationContext)
+                        runOnUiThread { info.text = result }
+                    }.start()
+                }.show()
+        }
+        button("7. Open CU sign-in page") {
+            if (!LiveSessionTest.selectedWifiMatches(applicationContext)) {
+                info.text = "Connect to your trusted Wi-Fi first. No browser opened."
+            } else {
+                info.text = "Opening official university login page in the system browser. This app never sees your password."
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://172.16.2.1:1000/login?")))
+                } catch (_: Exception) {
+                    info.text = "No browser available; open the CU Wi-Fi sign-in notification instead."
+                }
+            }
+        }
+        button("8. Verify internet restored") {
+            info.text = "Checking the selected Wi-Fi only..."
+            Thread {
+                val r = WifiProbe.probe(applicationContext)
+                runOnUiThread {
+                    info.text = "Verification: " + r.status + "; HTTP " + (r.code?.toString() ?: "unavailable") +
+                        "\nOnline (204) indicates internet access. A portal redirect suggests sign-in is still required."
+                }
+            }.start()
+        }
         button("Refresh status") { refresh() }
-        text("Safe mode: no login, logout, password submission or session modification. Offline simulation does not contact CU. Background checks are best effort.", 13f)
+        text("Real logout requires confirmation. Sign-in happens only in your browser, not this app. CU uses an HTTP login page, so credential transport is not encrypted on that endpoint. No automatic login or password storage. Private DNS is unchanged.", 13f)
         refresh()
     }
 
