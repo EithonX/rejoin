@@ -68,7 +68,7 @@ object SessionEngine {
             // Unpaired clients share an upstream session. Random stagger + a second
             // connectivity check avoids most duplicate logins without LAN chatter.
             if (!userInitiated) {
-                Thread.sleep(Random.nextLong(8000, 56000))
+                Thread.sleep(Random.nextLong(2000, 10001))
             } else {
                 Thread.sleep(900)
             }
@@ -77,7 +77,6 @@ object SessionEngine {
             if (again.status != "Captive portal detected" && !explicitlyLoggedOut) {
                 return finish("Portal no longer confirmed; did not submit credentials: " + again.status)
             }
-            if (again.status == "Online") return finish("Already online; no login needed")
 
             // Persist before POST, so a killed process will not cause a login storm.
             prefs.edit().putLong("next_allowed", System.currentTimeMillis() + COOLDOWN_MS)
