@@ -160,8 +160,11 @@ object WifiProbe {
                 } else if (code == 503) hasOutage = true
             }
         }
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val caps = cm.getNetworkCapabilities(snapshot.network)
+        val androidCaptive = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) == true
         return when {
-            portalEvidence -> Result("Captive portal detected", portalCode, true)
+            portalEvidence || androidCaptive -> Result("Captive portal detected", portalCode ?: lastCode, true)
             hasOutage -> Result("Network outage or upstream service error", lastCode, true)
             else -> Result("Unconfirmed network state (" +
                 findings.take(3).joinToString("; ").take(180) + "); no automatic login", lastCode, true)
