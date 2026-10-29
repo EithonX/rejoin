@@ -12,7 +12,7 @@ object SessionEngine {
     private val running = AtomicBoolean(false)
     private const val COOLDOWN_MS = 20 * 60 * 1000L
 
-    fun run(context: Context, userInitiated: Boolean = false, explicitlyLoggedOut: Boolean = false): String {
+    fun run(context: Context, userInitiated: Boolean = false, explicitlyLoggedOut: Boolean = false, progress: (String) -> Unit = {}): String {
         if (!running.compareAndSet(false, true)) return "Another check is already running."
         val prefs = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
         fun finish(message: String): String {
@@ -21,6 +21,35 @@ object SessionEngine {
             return message
         }
         try {
+            // In the explicit test, we have just issued a user-approved logout.
+            // Skip pre-login DNS/probe loops entirely; go straight to the actual
+            // FortiGate form and verify connectivity after submitting.
+            if (explicitlyLoggedOut) {
+                if (!prefs.getBoolean("auto_enabled", false) || !prefs.getBoolean("http_opt_in", false))
+                    return finish("Automatic login disabled or HTTP consent missing")
+                if (!CredentialVault.hasCredentials(context))
+                    return finish("Encrypted credentials not configured")
+                progress("Stage 0/3: Checking trusted Wi-Fi")
+                val snapshot = WifiProbe.current(context)
+                    ?: return finish("Wi-Fi identity unavailable")
+                if (!LiveSessionTest.selectedWifiMatches(context))
+                    return finish("Trusted Wi-Fi mismatch; no password sent")
+                val credentials = CredentialVault.read(context)
+                    ?: return finish("Could not decrypt saved credentials")
+                val submitted = FortinetWire.submitOnce(
+                    snapshot.network, credentials.username, credentials.password, progress
+                )
+                progress("Stage 3/3: Verifying internet (no DNS lookup)")
+                Thread.sleep(1000L)
+                val verified = WifiProbe.probe(context)
+                if (verified.status == "Online") {
+                    prefs.edit().putLong("last_success", System.currentTimeMillis()).apply()
+                    return finish("Internet restored automatically (HTTP 204)")
+                }
+                return finish(submitted.description + "; verification: " +
+                    verified.status + ". No repeated login.")
+            }
+
             val state = WifiProbe.probe(context)
             if (!state.matched) return finish(state.status + "; no action")
             if (state.status == "Online") return finish("Online — no authentication needed")
@@ -57,8 +86,9 @@ object SessionEngine {
             val snapshot = WifiProbe.current(context)
                 ?: return finish("Wi-Fi identity unavailable; login cancelled")
             if (!LiveSessionTest.selectedWifiMatches(context)) return finish("Trusted Wi-Fi changed; login cancelled")
-            val submitted = FortinetWire.submitOnce(snapshot.network, credentials.username, credentials.password)
-            Thread.sleep(2100)
+            val submitted = FortinetWire.submitOnce(snapshot.network, credentials.username, credentials.password, progress)
+            progress("Stage 3/3: Verifying internet (no DNS lookup)")
+            Thread.sleep(1000)
             val verified = WifiProbe.probe(context)
             return if (verified.status == "Online") {
                 prefs.edit().putLong("last_success", System.currentTimeMillis()).apply()
