@@ -56,7 +56,7 @@ class MainActivity : Activity() {
             })
         }
         label("Campus AutoConnect Lab", 24f)
-        label("v0.5 — Unattended login prototype • FortiGate • selected Wi-Fi only", 14f)
+        label("v0.6 — FortiGate auto-recovery • improved portal detection", 14f)
         profile = label("No selected network", 15f)
         scheduler = label("Automatic repair: disabled", 15f)
         info = label("Set up a trusted network first.")
@@ -136,14 +136,19 @@ class MainActivity : Activity() {
             } else {
                 AlertDialog.Builder(this)
                     .setTitle("Temporarily disconnect the shared connection?")
-                    .setMessage("CU logout can interrupt everyone using your router. After logging out, the app will try one authorized automatic login and verify the connection. It will not keep retrying.")
+                    .setMessage("CU logout can interrupt everyone using your router. After a confirmed logout, the app will try one login, verify connectivity, and stop. It will not keep retrying.")
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Log out and test") { _, _ ->
                         info.text = "Testing shared logout and recovery..."
                         Thread {
                             val logout = LiveSessionTest.logout(applicationContext)
                             Thread.sleep(1600)
-                            val recovery = SessionEngine.run(applicationContext, userInitiated = true)
+                            val succeeded = logout.contains("Server: HTTP/1.1") || logout.contains("Server: HTTP/1.0")
+                            val recovery = if (succeeded) {
+                                SessionEngine.run(applicationContext, userInitiated = true, explicitlyLoggedOut = true)
+                            } else {
+                                "Logout was not confirmed; automatic recovery not forced."
+                            }
                             runOnUiThread { info.text = logout + "\n\nRecovery: " + recovery; refreshLabels() }
                         }.start()
                     }.show()
