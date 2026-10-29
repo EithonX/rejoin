@@ -51,7 +51,7 @@ object WifiProbe {
     }
 
     private data class ProbeHttp(val code: Int, val response: String)
-    private fun request(network: Network, ip: String): ProbeHttp? {
+    private fun request(network: Network, ip: String, host: String): ProbeHttp? {
         var socket: java.net.Socket? = null
         return try {
             val ipv4 = ip.split('.').map { it.toIntOrNull() ?: return null }
@@ -60,7 +60,7 @@ object WifiProbe {
             socket = network.socketFactory.createSocket()
             socket.connect(InetSocketAddress(address, 80), 4000)
             socket.soTimeout = 4000
-            val req = "GET /generate_204 HTTP/1.1\r\nHost: " + CHECK_HOST +
+            val req = "GET /generate_204 HTTP/1.1\r\nHost: " + host +
                 "\r\nConnection: close\r\nCache-Control: no-cache\r\nAccept-Encoding: identity\r\n\r\n"
             socket.getOutputStream().write(req.toByteArray(StandardCharsets.US_ASCII))
             socket.getOutputStream().flush()
@@ -85,37 +85,86 @@ object WifiProbe {
         finally { try { socket?.close() } catch (_: Exception) {} }
     }
 
+    /**
+     * A healthy connectivity endpoint returns 204. Redirects and branded login HTML
+     * are captive-portal evidence. Unexpected statuses alone are NOT authorization
+     * to send credentials. Retest alternate endpoints before declaring an outage.
+     */
     fun probe(context: Context): Result {
         val pref = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
         val snapshot = current(context) ?: return Result("Wi-Fi identity unavailable", null, false)
         if (snapshot.ssid != pref.getString("ssid", null) ||
-            !snapshot.bssid.equals(pref.getString("bssid", null), ignoreCase = true)) {
+            !snapshot.bssid.equals(pref.getString("bssid", null), true)) {
             return Result("Not the selected Wi-Fi", null, false)
         }
-        val cached = pref.getString("probe_ip", null)
-        val resolved = try {
-            snapshot.network.getAllByName(CHECK_HOST).filterIsInstance<Inet4Address>()
-                .firstOrNull()?.hostAddress
-        } catch (_: Exception) { null }
-        val choices = listOfNotNull(cached, resolved).distinct()
-        if (choices.isEmpty()) return Result("Connectivity probe DNS unavailable (no cached IP)", null, true)
-        for (address in choices) {
-            val response = request(snapshot.network, address) ?: continue
-            val code = response.code
-            val state = when {
-                code == 204 -> "Online"
-                code in listOf(301, 302, 303, 307, 308) &&
-                    Regex("""(?im)^Location:\s*[^\r\n]*172\.16\.2\.1(?::1000)?(?:/|\?|$)""")
-                        .containsMatchIn(response.response) -> "Captive portal detected"
-                code == 200 && response.response.contains("Firewall Authentication", ignoreCase = true) -> "Captive portal detected"
-                code == 503 -> "Network outage"
-                else -> "Unknown response; no automatic login"
+        val targets = listOf(CHECK_HOST, "clients3.google.com")
+        val findings = mutableListOf<String>()
+        var portalCode: Int? = null
+        var portalEvidence = false
+        var lastCode: Int? = null
+        var hasOutage = false
+
+        for (host in targets) {
+            val cacheKey = if (host == CHECK_HOST) "probe_ip" else "probe_ip_backup"
+            val cache = pref.getString(cacheKey, null)
+            val resolved = try {
+                snapshot.network.getAllByName(host).filterIsInstance<Inet4Address>()
+                    .firstOrNull()?.hostAddress
+            } catch (_: Exception) { null }
+            val ips = listOfNotNull(cache, resolved).distinct()
+            if (ips.isEmpty()) {
+                findings.add("$host: DNS unavailable")
+                continue
             }
-            if (code == 204) {
-                pref.edit().putString("probe_ip", address).apply()
+            for (ip in ips.take(2)) {
+                val response = request(snapshot.network, ip, host)
+                if (response == null) {
+                    findings.add("$host: no HTTP response")
+                    continue
+                }
+                val code = response.code
+                lastCode = code
+                if (code == 204) {
+                    pref.edit().putString(cacheKey, ip).apply()
+                    return Result("Online", 204, true)
+                }
+
+                val headers = response.response.substringBefore("\r\n\r\n")
+                val location = Regex("""(?im)^Location:\s*([^\r\n]+)""")
+                    .find(headers)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+                val locationUri = try { java.net.URI(location) } catch (_: Exception) { null }
+                val redirectHost = locationUri?.host.orEmpty().lowercase()
+                val body = response.response.substringAfter("\r\n\r\n", "")
+                val fortinetFields = body.contains("name=\"magic\"", true) &&
+                    (body.contains("name=\"username\"", true) || body.contains("Firewall Authentication", true))
+                val captive = when {
+                    code in 300..399 -> {
+                        // generate_204 never normally redirects; the server may use
+                        // a hostname rather than CU's numerical gateway IP.
+                        location.isNotBlank() && (
+                            redirectHost != host.lowercase() ||
+                            location.contains("login", true) ||
+                            location.contains("fgtauth", true) ||
+                            location.contains("172.16.", true) ||
+                            location.contains(":1000")
+                        )
+                    }
+                    code == 200 -> fortinetFields ||
+                        (body.contains("<form", true) && body.contains("password", true))
+                    else -> false
+                }
+                findings.add("$host: HTTP $code" + if (code in 300..399) " redirect" else "")
+                if (captive) {
+                    portalEvidence = true
+                    portalCode = code
+                } else if (code == 503) hasOutage = true
             }
-            return Result(state, code, true)
         }
-        return Result("Connectivity probe failed; no automatic login", null, true)
+        return when {
+            portalEvidence -> Result("Captive portal detected", portalCode, true)
+            hasOutage -> Result("Network outage or upstream service error", lastCode, true)
+            else -> Result("Unconfirmed network state (" +
+                findings.take(3).joinToString("; ").take(180) + "); no automatic login", lastCode, true)
+        }
     }
 }
