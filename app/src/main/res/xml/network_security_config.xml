@@ -3,5 +3,6 @@
     <base-config cleartextTrafficPermitted="false"/>
     <domain-config cleartextTrafficPermitted="true">
         <domain>connectivitycheck.gstatic.com</domain>
+        <domain>172.16.2.1</domain>
     </domain-config>
 </network-security-config>
