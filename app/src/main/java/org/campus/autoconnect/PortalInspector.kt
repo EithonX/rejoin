@@ -1,12 +1,9 @@
 package org.campus.autoconnect
 
 import android.content.Context
-import android.security.NetworkSecurityPolicy
 import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.net.URL
 import java.nio.charset.StandardCharsets
 
 /**
@@ -26,34 +23,10 @@ object PortalInspector {
             return "Not the selected Wi-Fi; no request sent."
         }
 
-        val output = StringBuilder("Selected Wi-Fi matched.\n")
-        output.append("Cleartext permitted: ").append(NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(HOST)).append("\n")
-        var connection: HttpURLConnection? = null
-        try {
-            connection = snapshot.network.openConnection(URL(URL_TEXT)) as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.instanceFollowRedirects = false
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
-            connection.useCaches = false
-            connection.setRequestProperty("Accept", "text/html")
-            connection.setRequestProperty("Connection", "close")
-            val code = connection.responseCode
-            output.append("Android HTTP: ").append(code).append('\n')
-            if (code == 200) {
-                val html = connection.inputStream.bufferedReader().use { it.readText().take(12000) }
-                output.append(summarize(html))
-            } else {
-                output.append("HTTP inspection stopped at status ").append(code)
-            }
-        } catch (e: Exception) {
-            output.append("Android HTTP error: ").append(safeError(e)).append('\n')
-            output.append("TCP diagnostic:\n").append(rawHttp(snapshot.network.socketFactory))
-        } finally {
-            connection?.disconnect()
-        }
-        output.append("\nRead-only. No credentials sent, no logout performed.")
-        return output.toString()
+        // One GET via the proven Wi-Fi-bound socket path. No duplicate HTTP attempt.
+        val result = rawHttp(snapshot.network.socketFactory)
+        return "Selected Wi-Fi matched.\n" + result +
+            "\nRead-only inspection. No passwords, cookies or token values retained."
     }
 
     private fun summarize(html: String): String {
@@ -62,7 +35,8 @@ object PortalInspector {
         val fields = Regex("""<input\b[^>]*\bname\s*=\s*['"]?([A-Za-z0-9_-]+)""", RegexOption.IGNORE_CASE)
             .findAll(html).map { it.groupValues[1] }.distinct().toList()
         val expected = listOf("username", "password", "magic", "4Tredir")
-        return "Title: $title\nFortinet marker: ${html.contains("Fortinet", ignoreCase = true)}\n" +
+        return "Title: $title\n" +
+            "FortiGate-form match: " + expected.all { it in fields } + "\n" +
             "Expected input names present: " + expected.filter { it in fields }.joinToString(", ").ifEmpty { "none" } + "\n"
     }
 
