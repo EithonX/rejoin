@@ -58,8 +58,8 @@ object WifiProbe {
             if (ipv4.size != 4 || ipv4.any { it !in 0..255 }) return null
             val address = InetAddress.getByAddress(ipv4.map { it.toByte() }.toByteArray())
             socket = network.socketFactory.createSocket()
-            socket.connect(InetSocketAddress(address, 80), 4000)
-            socket.soTimeout = 4000
+            socket.connect(InetSocketAddress(address, 80), 2500)
+            socket.soTimeout = 2500
             val req = "GET /generate_204 HTTP/1.1\r\nHost: " + host +
                 "\r\nConnection: close\r\nCache-Control: no-cache\r\nAccept-Encoding: identity\r\n\r\n"
             socket.getOutputStream().write(req.toByteArray(StandardCharsets.US_ASCII))
@@ -90,7 +90,7 @@ object WifiProbe {
      * are captive-portal evidence. Unexpected statuses alone are NOT authorization
      * to send credentials. Retest alternate endpoints before declaring an outage.
      */
-    fun probe(context: Context): Result {
+    fun probe(context: Context, allowDns: Boolean = false): Result {
         val pref = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
         val snapshot = current(context) ?: return Result("Wi-Fi identity unavailable", null, false)
         if (snapshot.ssid != pref.getString("ssid", null) ||
@@ -107,16 +107,19 @@ object WifiProbe {
         for (host in targets) {
             val cacheKey = if (host == CHECK_HOST) "probe_ip" else "probe_ip_backup"
             val cache = pref.getString(cacheKey, null)
-            val resolved = try {
+            // Hot path: never invoke network.getAllByName(). With Private DNS and
+            // a captive portal, name resolution can block far longer than socket timeouts.
+            // Only the explicit initial check may resolve an address for caching.
+            val resolved = if (cache == null && allowDns) try {
                 snapshot.network.getAllByName(host).filterIsInstance<Inet4Address>()
                     .firstOrNull()?.hostAddress
-            } catch (_: Exception) { null }
-            val ips = listOfNotNull(cache, resolved).distinct()
+            } catch (_: Exception) { null } else null
+            val ips = listOfNotNull(cache, resolved).take(1)
             if (ips.isEmpty()) {
                 findings.add("$host: DNS unavailable")
                 continue
             }
-            for (ip in ips.take(2)) {
+            for (ip in ips) {
                 val response = request(snapshot.network, ip, host)
                 if (response == null) {
                     findings.add("$host: no HTTP response")
