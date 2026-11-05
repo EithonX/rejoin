@@ -68,6 +68,9 @@ class MainActivity : Activity() {
                 .setMessage("Other devices sharing the router may temporarily lose internet.")
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Log out") { _, _ ->
+                    getSharedPreferences("profile", MODE_PRIVATE).edit()
+                        .putLong("manual_test_until", System.currentTimeMillis() + 10 * 60 * 1000L)
+                        .commit()
                     info.text = "Sending logout request..."
                     Thread {
                         val result = LiveSessionTest.logout(applicationContext)
@@ -113,7 +116,7 @@ class MainActivity : Activity() {
                 }
             }
         }
-        button("2. Initial Wi-Fi connectivity check") { runCheck(false) }
+        button("2. Check Wi-Fi internet without DNS") { runCheck(false) }
 
         label("Your CU credentials (stored encrypted on this phone)", 15f)
         uid = EditText(this).apply {
@@ -233,8 +236,8 @@ class MainActivity : Activity() {
         Thread {
             val result = if (repair) SessionEngine.run(applicationContext, userInitiated = true)
                 else {
-                    val probe = WifiProbe.probe(applicationContext, allowDns = true)
-                    val outcome = probe.status + "; HTTP " + (probe.code?.toString() ?: "none")
+                    val probe = InternetVerifier.check(applicationContext)
+                    val outcome = probe.state.name + ": " + probe.details
                     getSharedPreferences("profile", MODE_PRIVATE).edit()
                         .putString("last_result", outcome)
                         .putLong("last_checked", System.currentTimeMillis()).apply()
