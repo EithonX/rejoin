@@ -1,41 +1,64 @@
-# Campus AutoConnect — 1.0 beta
+# Rejoin
 
-Native Android app to monitor and restore the **user's own authenticated Chandigarh University network session** on one explicitly trusted Wi-Fi access point.
+**Stay connected, quietly.**
 
-## Daily use
+Rejoin is a native Android utility for a user's **own authorized campus captive-portal connection**. The first supported adapter uses the FortiGate authentication flow verified on Chandigarh University's network. It is not a generic bypass of network access rules.
 
-1. Select your own Wi-Fi router in the app (SSID and BSSID are stored locally).
-2. Save your CU credentials using the on-device encrypted vault, after reviewing the campus HTTP warning.
-3. Enable **Automatic recovery**. Keep one primary phone responsible for automatic recovery per shared router; other phones can use manual mode.
-4. Use **Check now** for an independent IP-only internet check and **Repair connection** for a single user-triggered recovery attempt.
+## What works
 
-The dashboard shows connection status, a summary of the last check, the last successful recovery, and a short locally stored event history. Destructive logout testing, manual login, and the CU browser fallback live under **Advanced tools**.
+- Manual FortiGate login through the user's explicitly trusted Wi-Fi; the v1 beta adapter was verified on a physical Android phone.
+- One-tap connection checks and repair, with no credential submission if internet access is already verified.
+- Android Keystore-backed encryption for credentials stored on the device; backup disabled.
+- Event-driven monitoring while the app is visible, with duplicate-event suppression.
+- A PendingIntent Wi-Fi availability callback registered for automatic mode; a receiver restores registration after device reboot or app update.
+- Adaptive, one-shot `JobScheduler` maintenance instead of an always-running polling service.
+- IP-only verification that does not require changing Android Private DNS, and does not silently fall back to mobile data.
+- A small on-device activity history without credentials, tokens or cookies.
 
-## When checks happen
+## One-time setup
 
-- **App in foreground:** Android Wi-Fi network callbacks indicate when network validation or captive-portal state changes. The app debounces events and only attempts repair on the trusted access point when automatic recovery is enabled.
-- **App in background:** one persisted Android `JobScheduler` periodic task, minimum 15-minute interval with a 5-minute flex window. On supported Android devices, this task requires Wi-Fi.
-- **When online:** do not log in again.
-- **When portal is confirmed:** after a small randomized delay, re-check to avoid duplicate attempts, then submit the saved credentials once and independently verify public internet access.
-- **When network is unknown/down:** do not send the password.
-- **When login fails:** respect the existing 20-minute cooldown; do not hammer the campus gateway.
+1. Connect to **your own** Wi-Fi/router.
+2. In Settings, select that Wi-Fi access point. This stores its SSID and BSSID, and the app checks both before authentication.
+3. Save your own university credentials, after reading and accepting the campus HTTP transport warning.
+4. Enable automatic recovery on the Home screen.
+5. If Android doesn't permit Wi-Fi identity access in the background, review the app's location settings and choose background access where available.
 
-**Important:** Android can defer jobs during Doze or battery optimization. The app cannot promise instant recovery while the process is suspended. Background location permission may be required for trusted SSID/BSSID detection. The app never bypasses a university-configured hard session timeout.
+For a group sharing one router, initially configure **one primary phone** for automatic recovery. Random delays reduce collisions but do not implement full cross-device coordination.
 
-## Security and privacy
+## Scheduling
 
-- Android Keystore AES-GCM encryption is used for saved credentials. Backup is disabled.
-- The current campus HTTP authentication endpoint does **not** encrypt credentials in transit. This is a risk even though credentials are encrypted on the phone. The app requires explicit consent. Do not distribute or reuse this debug build as a general public login client.
-- The application makes no requests to analytics or app developer cloud services.
-- Session tokens, cookies and passwords are never stored in logs or event history.
-- Login is restricted to the known university gateway on the selected Wi-Fi access point.
+| Condition | Balanced | Responsive |
+|---|---|---|
+| Internet confirmed healthy | ~30 min | ~15 min |
+| Session just restored | ~25 min | ~15 min |
+| Portal suspected | ~15 min | ~15 min |
+| Verification inconclusive | ~20 min | ~15 min |
+| Recovery failed | ~30 min | ~20 min |
+
+These are **requested minimum delays**, not exact timers. Android may defer background jobs during Doze, app standby and battery optimization. A Wi-Fi-available event can bring a check forward. Silent upstream FortiGate expiry cannot be observed reliably without some network verification.
+
+## Design
+
+Name: **Rejoin**. The mark is a broken circular link reconnecting. The interface deliberately prioritizes one status and two actions, rather than showing diagnostics in the normal path.
+
+Palette: porcelain `#F6F8F5`, botanical ink `#19302B`, jade `#1F6954`, mint `#D7EFE3`. All views and icons are native Android resources; no WebView, Compose runtime or analytics SDK.
+
+## Security and limitations
+
+**Important:** CU's observed HTTP captive portal does not encrypt credentials in transit. The on-device vault does not solve this transport risk. Rejoin requires opt-in, restricts the destination to the known campus gateway, never follows an arbitrary login POST destination, and does not disable TLS verification for public HTTPS checks.
+
+The FortiGate adapter is currently campus-specific; a public, general-purpose version requires more portal types, independently verified secure authentication endpoints, signing and update infrastructure, broader device testing, and a security review. **Do not redistribute this debug APK as a public production app.**
+
+Shizuku/root are neither needed nor requested. The app cannot bypass system power restrictions or force Android to display a connected status.
 
 ## Building
 
-A private GitHub Actions workflow compiles `app-debug.apk` via Gradle. Open Actions > Build Android APK > Artifacts and download `CampusAutoConnect-debug-apk`.
+GitHub Actions runs `:app:testDebugUnitTest` and `:app:assembleDebug` with Java 17 and Android 35. Open **Actions → Build Android APK → Artifacts** to obtain the installable debug build.
 
-No Android Studio, Chromium or third-party UI libraries are required for end users. The application uses the Android framework UI and native network APIs.
+The application ID `org.campus.autoconnect` is retained intentionally to support upgrades from earlier prototypes when Android signing keys match. GitHub-hosted debug builds may have different signing certificates between runs; if Android rejects an update, uninstalling the old app also clears its locally stored login settings. A future public release must use a privately held, stable release signing key.
 
-## Status
+The previous working implementation is preserved on the `backup/campus-autoconnect-v1` branch.
 
-The FortiGate login flow and manual sign-in were confirmed in earlier real-device tests; v1.0 beta's redesigned UI, event-driven foreground behavior and long-running background maintenance still require device testing.
+## Verification
+
+The Android project and five scheduling-policy tests compile in GitHub Actions. The redesigned Rejoin UI, new background callback, and adaptive scheduler **still require real-device testing**. Do not confuse a green build with proof of overnight reliability.
