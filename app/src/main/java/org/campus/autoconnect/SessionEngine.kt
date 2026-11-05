@@ -23,6 +23,7 @@ object SessionEngine {
         if (!running.compareAndSet(false, true)) return "Another connection check is running"
         val prefs = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
+        var checkedProfileId: String? = null
 
         fun finish(message: String): String {
             val event = when {
@@ -37,6 +38,7 @@ object SessionEngine {
             }
             prefs.edit()
                 .putString("last_result", message)
+                .putString("last_profile_id", checkedProfileId)
                 .putLong("last_checked", System.currentTimeMillis())
                 .putString("last_class", when (RecoveryPolicy.fromMessage(message)) {
                     RecoveryPolicy.Outcome.HEALTHY -> "healthy"
@@ -60,6 +62,7 @@ object SessionEngine {
                 ?: return finish("Trusted Wi-Fi identity unavailable; check background location access")
             val trusted = TrustedNetworks.find(context, snapshot)
                 ?: return finish("Not a trusted Wi-Fi; no request sent")
+            checkedProfileId = trusted.id
 
             progress("Checking Wi-Fi access")
             val initial = InternetVerifier.check(context, snapshot.network)
@@ -118,6 +121,7 @@ object SessionEngine {
             if (confirmed.state == InternetVerifier.State.ONLINE) {
                 prefs.edit()
                     .putLong("last_success", System.currentTimeMillis())
+                    .putLong("last_success_" + trusted.id, System.currentTimeMillis())
                     .remove("manual_test_until")
                     .apply()
                 NetworkStatusHint.requestAfterVerifiedOnline(context)
