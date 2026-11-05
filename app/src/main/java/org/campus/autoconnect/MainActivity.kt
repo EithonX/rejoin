@@ -56,11 +56,32 @@ class MainActivity : Activity() {
             })
         }
         label("Campus AutoConnect Lab", 24f)
-        label("v0.8 — FortiGate redirect-aware native login", 14f)
+        label("v0.9 — Independent session test controls", 14f)
         profile = label("No selected network", 15f)
         scheduler = label("Automatic repair: disabled", 15f)
         info = label("Set up a trusted network first.")
 
+        label("LIVE SESSION TEST", 16f)
+        button("A. Log out shared CU session") {
+            AlertDialog.Builder(this)
+                .setTitle("Log out shared Wi-Fi session?")
+                .setMessage("Other devices sharing the router may temporarily lose internet.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Log out") { _, _ ->
+                    info.text = "Sending logout request..."
+                    Thread {
+                        val result = LiveSessionTest.logout(applicationContext)
+                        runOnUiThread { info.text = result }
+                    }.start()
+                }.show()
+        }
+        button("B. Verify internet (without DNS)") {
+            info.text = "Checking public internet through selected Wi-Fi..."
+            Thread {
+                val result = InternetVerifier.check(applicationContext)
+                runOnUiThread { info.text = result.state.name + ": " + result.details }
+            }.start()
+        }
         button("1. Trust currently connected Wi-Fi") {
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 23)
