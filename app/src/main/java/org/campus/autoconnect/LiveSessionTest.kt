@@ -16,18 +16,14 @@ object LiveSessionTest {
     private const val PORT = 1000
 
     fun selectedWifiMatches(context: Context): Boolean {
-        val p = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
         val snapshot = WifiProbe.current(context) ?: return false
-        return snapshot.ssid == p.getString("ssid", null) &&
-            snapshot.bssid.equals(p.getString("bssid", null), ignoreCase = true)
+        return TrustedNetworks.find(context, snapshot) != null
     }
 
     fun logout(context: Context): String {
-        val p = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
         val snapshot = WifiProbe.current(context)
             ?: return "Wi-Fi unavailable. No logout request sent."
-        if (snapshot.ssid != p.getString("ssid", null) ||
-            !snapshot.bssid.equals(p.getString("bssid", null), ignoreCase = true)) {
+        if (TrustedNetworks.find(context, snapshot) == null) {
             return "Trusted Wi-Fi does not match. No logout request sent."
         }
         var socket: Socket? = null
@@ -37,7 +33,7 @@ object LiveSessionTest {
             socket.soTimeout = 5000
             val message = "GET /logout? HTTP/1.1\r\n" +
                 "Host: " + HOST + ":" + PORT + "\r\n" +
-                "User-Agent: CampusAutoConnect-Lab/0.4\r\n" +
+                "User-Agent: Rejoin/2.1\r\n" +
                 "Accept: text/html\r\nConnection: close\r\n\r\n"
             socket.getOutputStream().write(message.toByteArray(StandardCharsets.US_ASCII))
             socket.getOutputStream().flush()
