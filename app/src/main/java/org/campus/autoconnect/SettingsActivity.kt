@@ -223,7 +223,8 @@ class SettingsActivity : Activity() {
             RejoinUi.add(accounts, RejoinUi.label(this,
                 "✓  Password saved on this device", 15f, RejoinUi.jade, true), 7)
             RejoinUi.add(accounts, RejoinUi.label(this,
-                all.size.toString() + if (all.size == 1) " saved login" else " saved logins" +
+                all.size.toString() +
+                    (if (all.size == 1) " saved login" else " saved logins") +
                     "  ·  Default: " + (default?.label ?: "Not set"), 12f, RejoinUi.muted), 5)
         }
     }
