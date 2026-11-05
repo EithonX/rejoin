@@ -44,7 +44,7 @@ object TrustedNetworks {
                 val id = item.optString("id")
                 if (ssid.isBlank() || bssid.isBlank() || id.isBlank()) continue
                 result.add(Profile(id, item.optString("label", ssid).ifBlank { ssid },
-                    ssid, bssid, item.optString("loginId").ifBlank { null }))
+                    ssid, bssid, item.optString("loginId").takeIf { it.isNotBlank() }))
             }
             result
         } catch (_: Exception) { emptyList() }
