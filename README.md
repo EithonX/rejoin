@@ -1,64 +1,78 @@
 # Rejoin
 
-**Stay connected, quietly.**
+**Campus Wi-Fi that reconnects itself.** A small, native Android app by [EithonX](https://github.com/EithonX).
 
-Rejoin is a native Android utility for a user's **own authorized campus captive-portal connection**. The first supported adapter uses the FortiGate authentication flow verified on Chandigarh University's network. It is not a generic bypass of network access rules.
+Rejoin is meant to be configured once and mostly forgotten. It checks the selected Wi-Fi connection, recognizes when a supported captive portal asks for sign-in, and uses your own authorized credentials to restore the session.
 
-## What works
+> **Private beta, not a public production release.** The FortiGate adapter was verified with one CU installation; it is not a universal captive-portal login implementation. CU's observed login form uses **unencrypted HTTP**, meaning credentials are exposed in transit. This build keeps credentials encrypted at rest and requires explicit opt-in, but cannot fix the server's transport security.
 
-- Manual FortiGate login through the user's explicitly trusted Wi-Fi; the v1 beta adapter was verified on a physical Android phone.
-- One-tap connection checks and repair, with no credential submission if internet access is already verified.
-- Android Keystore-backed encryption for credentials stored on the device; backup disabled.
-- Event-driven monitoring while the app is visible, with duplicate-event suppression.
-- A PendingIntent Wi-Fi availability callback registered for automatic mode; a receiver restores registration after device reboot or app update.
-- Adaptive, one-shot `JobScheduler` maintenance instead of an always-running polling service.
-- IP-only verification that does not require changing Android Private DNS, and does not silently fall back to mobile data.
-- A small on-device activity history without credentials, tokens or cookies.
+## Use it
 
-## One-time setup
+1. Connect to a router you own or have permission to use.
+2. Open **Settings → Trusted Wi-Fi → Add the Wi-Fi I'm using**.
+3. Open **Saved logins → Manage saved logins** and save your campus account. The app confirms **Password saved on this device**.
+4. Return home and enable **Automatic recovery**. The default **Balanced** mode conserves battery.
+5. If Android withholds Wi-Fi identity in the background, review Rejoin's location permission from Settings.
 
-1. Connect to **your own** Wi-Fi/router.
-2. In Settings, select that Wi-Fi access point. This stores its SSID and BSSID, and the app checks both before authentication.
-3. Save your own university credentials, after reading and accepting the campus HTTP transport warning.
-4. Enable automatic recovery on the Home screen.
-5. If Android doesn't permit Wi-Fi identity access in the background, review the app's location settings and choose background access where available.
+That's it. For most people, **one saved Wi-Fi and one saved login** are all that's needed.
 
-For a group sharing one router, initially configure **one primary phone** for automatic recovery. Random delays reduce collisions but do not implement full cross-device coordination.
+### Optional: more than one Wi-Fi or login
 
-## Scheduling
+You can save up to 32 exact Wi-Fi access points, and up to 16 encrypted logins. Every Wi-Fi automatically uses your default login. For a particular router, open **Settings → Trusted Wi-Fi → Manage → Choose saved login** to override that default. An explicitly assigned account isn't silently replaced if it's missing; removing a linked account asks for confirmation and returns those routers to the default login.
 
-| Condition | Balanced | Responsive |
-|---|---|---|
-| Internet confirmed healthy | ~30 min | ~15 min |
-| Session just restored | ~25 min | ~15 min |
-| Portal suspected | ~15 min | ~15 min |
-| Verification inconclusive | ~20 min | ~15 min |
-| Recovery failed | ~30 min | ~20 min |
+Saving a new Wi-Fi requires connecting to it first. Rejoin matches both SSID and BSSID. It does **not** trust every access point merely because it broadcasts the same network name.
 
-These are **requested minimum delays**, not exact timers. Android may defer background jobs during Doze, app standby and battery optimization. A Wi-Fi-available event can bring a check forward. Silent upstream FortiGate expiry cannot be observed reliably without some network verification.
+## What happens in the background?
 
-## Design
+Rejoin has no always-running polling service. It listens for Wi-Fi changes while open, registers a Wi-Fi availability callback, and uses Android-managed one-shot jobs when background recovery is enabled. A small IP-only check is made only when needed; a failed or uncertain network check **doesn't** authorize sending a password.
 
-Name: **Rejoin**. The mark is a broken circular link reconnecting. The interface deliberately prioritizes one status and two actions, rather than showing diagnostics in the normal path.
+| Setting | Healthy-network backup check |
+| --- | --- |
+| Balanced | Requested after about 30 minutes |
+| Responsive | Requested after about 15 minutes |
 
-Palette: porcelain `#F6F8F5`, botanical ink `#19302B`, jade `#1F6954`, mint `#D7EFE3`. All views and icons are native Android resources; no WebView, Compose runtime or analytics SDK.
+Android may delay either check during Doze or battery restrictions. An upstream FortiGate timeout can be silent, so instant recovery can't be guaranteed. See [technical notes](docs/architecture.md) for the state model and remaining limitations.
 
-## Security and limitations
+## Security and privacy
 
-**Important:** CU's observed HTTP captive portal does not encrypt credentials in transit. The on-device vault does not solve this transport risk. Rejoin requires opt-in, restricts the destination to the known campus gateway, never follows an arbitrary login POST destination, and does not disable TLS verification for public HTTPS checks.
+- Credentials are encrypted on the phone with **Android Keystore AES-GCM**; backup is disabled.
+- The app doesn't run an account server, collect analytics, or store authentication tokens in event history.
+- Public connectivity tests contact Cloudflare's public IP endpoint; this is distinct from the campus login traffic.
+- Portal submission is currently limited to the known CU FortiGate gateway, on an explicitly trusted Wi-Fi.
+- SSID/BSSID matching limits accidental submissions but is **not cryptographic proof** of network identity. The existing HTTP form carries a credential-exposure risk.
+- Delete saved logins from Settings. Clearing app data or uninstalling also removes the stored keys.
 
-The FortiGate adapter is currently campus-specific; a public, general-purpose version requires more portal types, independently verified secure authentication endpoints, signing and update infrastructure, broader device testing, and a security review. **Do not redistribute this debug APK as a public production app.**
+Read [Privacy](PRIVACY.md) and [Security](SECURITY.md) before using the beta on another network.
 
-Shizuku/root are neither needed nor requested. The app cannot bypass system power restrictions or force Android to display a connected status.
+## Build and test
 
-## Building
+The repository uses Gradle, Kotlin and Android SDK 35. GitHub Actions runs JVM policy/profile tests and builds a debug APK.
 
-GitHub Actions runs `:app:testDebugUnitTest` and `:app:assembleDebug` with Java 17 and Android 35. Open **Actions → Build Android APK → Artifacts** to obtain the installable debug build.
+```sh
+gradle :app:testDebugUnitTest :app:assembleDebug
+```
 
-The application ID `org.campus.autoconnect` is retained intentionally to support upgrades from earlier prototypes when Android signing keys match. GitHub-hosted debug builds may have different signing certificates between runs; if Android rejects an update, uninstalling the old app also clears its locally stored login settings. A future public release must use a privately held, stable release signing key.
+Download `Rejoin-debug-apk` from the most recent successful [Actions run](https://github.com/EithonX/captive/actions) (requires access to the private repository).
 
-The previous working implementation is preserved on the `backup/campus-autoconnect-v1` branch.
+**Signing:** hosted debug builds may use different signing keys across runs; Android may reject an update until the earlier build is removed. Removing it erases encrypted credentials and profile data. Stable release signing is intentionally not stored in this repository and should be configured privately before distribution.
 
-## Verification
+## Project layout
 
-The Android project and five scheduling-policy tests compile in GitHub Actions. The redesigned Rejoin UI, new background callback, and adaptive scheduler **still require real-device testing**. Do not confuse a green build with proof of overnight reliability.
+- `MainActivity`: connection-first home screen
+- `SettingsActivity`, `NetworkDetailsActivity`, `LoginsActivity`: profile and account management
+- `TrustedNetworks`: trusted access points and optional account assignments
+- `CredentialVault`: encrypted logins with migration from the v1 single-credential format
+- `SessionEngine`: conservative single-flight recovery
+- `FortinetLoginV2`: working campus-specific authentication adapter
+- `InternetVerifier`: Wi-Fi-bound, DNS-independent verification
+- `RecoveryScheduler`: Android-managed scheduling
+
+The previously working builds are preserved on `backup/rejoin-v2` and `backup/campus-autoconnect-v1`.
+
+## Maintainer
+
+**[EithonX](https://github.com/EithonX)**
+
+Bug reports should include the Rejoin version, Android version, behavior observed and **redacted** diagnostic messages. Never include passwords, cookies, `magic` tokens or device identifiers.
+
+Licensing and publication decisions remain with the repository owner.
