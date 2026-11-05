@@ -8,6 +8,8 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import java.io.ByteArrayOutputStream
+import android.os.Build
+import android.net.wifi.WifiInfo
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -23,20 +25,58 @@ object WifiProbe {
     data class Snapshot(val network: Network, val ssid: String, val bssid: String)
     data class Result(val status: String, val code: Int?, val matched: Boolean)
 
+    /**
+     * Resolve the real Wi-Fi Network rather than trusting Android's default route,
+     * which may be cellular or a VPN while CU authentication is expired.
+     * Prefer modern per-Network WifiInfo; use the legacy API only if unambiguous.
+     */
     @Suppress("DEPRECATION")
-    fun current(context: Context): Snapshot? {
-        if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return null
-        val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val info = try { wifi.connectionInfo } catch (_: Exception) { return null }
-        val ssid = info?.ssid?.removeSurrounding("\"") ?: return null
-        val bssid = info.bssid ?: return null
-        if (ssid == WifiManager.UNKNOWN_SSID || ssid.isBlank() ||
-            bssid.equals("02:00:00:00:00:00", true)) return null
+    fun current(context: Context, requiredNetwork: Network? = null): Snapshot? {
+        if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED) return null
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val network = cm.allNetworks.firstOrNull {
-            cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-        } ?: return null
-        return Snapshot(network, ssid, bssid)
+        val candidates = if (requiredNetwork != null) listOf(requiredNetwork)
+            else cm.allNetworks.toList()
+        val wifiNetworks = candidates.filter { n ->
+            cm.getNetworkCapabilities(n)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
+        if (wifiNetworks.isEmpty()) return null
+        fun normalize(raw: String?): String? {
+            val value = raw?.removeSurrounding("\"")?.trim().orEmpty()
+            if (value.isBlank() || value == WifiManager.UNKNOWN_SSID ||
+                value == "<unknown ssid>") return null
+            return value
+        }
+        fun validBssid(value: String?): Boolean {
+            return !value.isNullOrBlank() && !value.equals("02:00:00:00:00:00", true)
+        }
+        val trusted = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
+        val ssidTarget = trusted.getString("ssid", null)
+        val bssidTarget = trusted.getString("bssid", null)
+        var fallback: Snapshot? = null
+        for (network in wifiNetworks) {
+            val cap = cm.getNetworkCapabilities(network)
+            val modern = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                cap?.transportInfo as? WifiInfo else null
+            val ssid = normalize(modern?.ssid)
+            val bssid = modern?.bssid
+            if (ssid != null && validBssid(bssid)) {
+                val snap = Snapshot(network, ssid, bssid!!)
+                if (ssid == ssidTarget && bssid.equals(bssidTarget, true)) return snap
+                fallback = fallback ?: snap
+            }
+        }
+        if (fallback != null) return fallback
+        // API 31+ can redact transportInfo if background location isn't allowed.
+        // Avoid attributing Wi-Fi identity to an arbitrary network in multi-Wi-Fi mode.
+        if (wifiNetworks.size != 1) return null
+        val info = try {
+            val manager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            manager.connectionInfo
+        } catch (_: Exception) { null } ?: return null
+        val ssid = normalize(info.ssid) ?: return null
+        if (!validBssid(info.bssid)) return null
+        return Snapshot(wifiNetworks.single(), ssid, info.bssid)
     }
 
     fun trust(context: Context, snapshot: Snapshot) {
