@@ -8,338 +8,318 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.text.InputType
 import android.view.Gravity
 import android.view.View
-import android.widget.CheckBox
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import java.util.concurrent.Executors
 
-/** Configuration is intentional and separate from the one-glance dashboard. */
+/** Settings shows people what is saved, and hides technical diagnostics. */
 class SettingsActivity : Activity() {
-    private val executor = Executors.newSingleThreadExecutor()
-    private lateinit var networkLabel: TextView
-    private lateinit var credentialsLabel: TextView
-    private lateinit var modes: LinearLayout
+    private lateinit var networks: LinearLayout
+    private lateinit var accounts: LinearLayout
+    private lateinit var recovery: LinearLayout
     private lateinit var advanced: LinearLayout
-    private lateinit var advancedToggle: TextView
+    private lateinit var advancedLink: TextView
+    private val worker = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val outer = RejoinUi.column(this).apply { setBackgroundColor(RejoinUi.canvas) }
-        val scroller = ScrollView(this).apply {
-            clipToPadding = false
-            setBackgroundColor(RejoinUi.canvas)
-        }
+        val root = RejoinUi.column(this).apply { setBackgroundColor(RejoinUi.canvas) }
+        val scroll = ScrollView(this).apply { clipToPadding = false }
         val body = RejoinUi.column(this).apply {
-            setPadding(RejoinUi.dp(this@SettingsActivity, 23), RejoinUi.dp(this@SettingsActivity, 24),
-                RejoinUi.dp(this@SettingsActivity, 23), RejoinUi.dp(this@SettingsActivity, 30))
+            val d = RejoinUi.dp(this@SettingsActivity, 23)
+            setPadding(d, RejoinUi.dp(this@SettingsActivity, 26), d, d)
         }
-        scroller.addView(body)
-        outer.addView(scroller, LinearLayout.LayoutParams(-1, -1))
-        setContentView(outer)
-        RejoinUi.applySystemBars(this, outer)
+        scroll.addView(body)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, -1))
+        setContentView(root)
+        RejoinUi.applySystemBars(this, root)
 
-        val titleRow = RejoinUi.row(this)
-        titleRow.addView(RejoinUi.smallAction(this, "←", { finish() }),
+        val bar = RejoinUi.row(this)
+        bar.addView(RejoinUi.smallAction(this, "←") { finish() },
             LinearLayout.LayoutParams(RejoinUi.dp(this, 38), -2))
-        titleRow.addView(RejoinUi.label(this, "Settings", 27f, RejoinUi.ink, true),
+        bar.addView(RejoinUi.label(this, "Settings", 27f, RejoinUi.ink, true),
             LinearLayout.LayoutParams(0, -2, 1f))
-        RejoinUi.add(body, titleRow)
-        RejoinUi.add(body, RejoinUi.label(this, "Make Rejoin work the way you do.",
-            13f, RejoinUi.muted), 6)
+        RejoinUi.add(body, bar)
+        RejoinUi.add(body, RejoinUi.label(this, "Everything you need. Nothing you don't.",
+            13f, RejoinUi.muted), 9)
 
-        section(body, "YOUR NETWORK", 28)
-        val networkCard = RejoinUi.inset(this)
-        RejoinUi.add(body, networkCard, 11)
-        networkLabel = RejoinUi.label(this, "No trusted Wi-Fi yet", 16f, RejoinUi.ink, true)
-        RejoinUi.add(networkCard, networkLabel)
-        RejoinUi.add(networkCard, RejoinUi.label(this,
-            "Only this Wi-Fi can trigger saved campus authentication.",
-            12f, RejoinUi.muted), 8)
-        RejoinUi.add(networkCard, RejoinUi.action(this, "Use currently connected Wi-Fi", false) {
-            selectNetwork()
-        }, 17)
-        RejoinUi.add(networkCard, RejoinUi.smallAction(this, "Location & background access  →") {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.parse("package:" + packageName)))
-        }, 10)
-        RejoinUi.add(networkCard, RejoinUi.label(this,
-            "Android may require background location access to identify Wi-Fi while the phone is locked.",
-            11f, RejoinUi.muted), 8)
+        heading(body, "TRUSTED WI-FI", 28)
+        val netCard = RejoinUi.inset(this)
+        RejoinUi.add(body, netCard, 12)
+        RejoinUi.add(netCard, RejoinUi.label(this,
+            "Only networks you approve can use saved logins.", 12f, RejoinUi.muted))
+        networks = RejoinUi.column(this)
+        RejoinUi.add(netCard, networks, 15)
+        RejoinUi.add(netCard, RejoinUi.action(this, "Add the Wi-Fi I'm using", false) {
+            saveCurrentNetwork()
+        }, 16)
 
-        section(body, "AUTOMATION", 25)
+        heading(body, "SAVED LOGINS", 28)
+        val loginCard = RejoinUi.inset(this)
+        RejoinUi.add(body, loginCard, 12)
+        RejoinUi.add(loginCard, RejoinUi.label(this,
+            "One login is enough. Add another only if a network needs it.",
+            12f, RejoinUi.muted))
+        accounts = RejoinUi.column(this)
+        RejoinUi.add(loginCard, accounts, 14)
+        RejoinUi.add(loginCard, RejoinUi.action(this, "Manage saved logins", false) {
+            startActivity(Intent(this, LoginsActivity::class.java))
+        }, 16)
+
+        heading(body, "AUTOMATIC RECOVERY", 28)
         val modeCard = RejoinUi.inset(this)
-        RejoinUi.add(body, modeCard, 11)
+        RejoinUi.add(body, modeCard, 12)
         RejoinUi.add(modeCard, RejoinUi.label(this, "Recovery pace", 17f, RejoinUi.ink, true))
         RejoinUi.add(modeCard, RejoinUi.label(this,
-            "No constant background service. Both modes respond to network events when Android delivers them.",
+            "Balanced saves battery. Responsive checks more often when Android allows.",
             12f, RejoinUi.muted), 8)
-        modes = RejoinUi.row(this)
-        RejoinUi.add(modeCard, modes, 15)
-        RejoinUi.add(modeCard, RejoinUi.label(this,
-            "Balanced checks about every 30 minutes when healthy. Responsive uses a 15-minute backup. Android may defer either.",
+        recovery = RejoinUi.row(this)
+        RejoinUi.add(modeCard, recovery, 16)
+        RejoinUi.add(modeCard, RejoinUi.smallAction(this, "Background access settings  →") {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:" + packageName)))
+        }, 12)
+
+        heading(body, "ABOUT", 28)
+        val aboutCard = RejoinUi.inset(this)
+        RejoinUi.add(body, aboutCard, 12)
+        RejoinUi.add(aboutCard, RejoinUi.label(this, "Rejoin", 18f, RejoinUi.ink, true))
+        RejoinUi.add(aboutCard, RejoinUi.label(this,
+            "A small Android utility that handles campus sign-in so you don't have to.",
+            13f, RejoinUi.muted), 8)
+        RejoinUi.add(aboutCard, RejoinUi.label(this, "Developed by EithonX",
+            13f, RejoinUi.ink, true), 18)
+        RejoinUi.add(aboutCard, RejoinUi.smallAction(this, "GitHub  ·  github.com/EithonX  ↗") {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/EithonX")))
+        }, 6)
+        RejoinUi.add(aboutCard, RejoinUi.label(this,
+            "Your saved logins stay encrypted on this phone. Rejoin has no analytics or cloud account.",
             12f, RejoinUi.muted), 12)
-        rebuildModes()
+        RejoinUi.add(aboutCard, RejoinUi.label(this,
+            "CU currently uses an unencrypted HTTP sign-in page. Automatic login is optional and carries an in-transit password risk.",
+            12f, RejoinUi.amber), 9)
 
-        section(body, "YOUR ACCOUNT", 25)
-        val accountCard = RejoinUi.inset(this)
-        RejoinUi.add(body, accountCard, 11)
-        credentialsLabel = RejoinUi.label(this, "No login saved", 16f, RejoinUi.ink, true)
-        RejoinUi.add(accountCard, credentialsLabel)
-        RejoinUi.add(accountCard, RejoinUi.label(this,
-            "Stored using Android Keystore encryption and never uploaded to a Rejoin server.",
-            12f, RejoinUi.muted), 7)
-        RejoinUi.add(accountCard, RejoinUi.action(this, "Update CU login", false) {
-            showCredentialsDialog()
-        }, 16)
-        RejoinUi.add(accountCard, RejoinUi.label(this,
-            "Transport notice: CU's observed login endpoint uses plain HTTP. Passwords are not encrypted in transit. Auto-login remains opt-in.",
-            12f, RejoinUi.amber), 14)
-
-        section(body, "MORE", 25)
-        val advancedCard = RejoinUi.inset(this)
-        RejoinUi.add(body, advancedCard, 11)
-        advancedToggle = RejoinUi.smallAction(this, "Advanced & testing   +") {
+        heading(body, "ADVANCED", 28)
+        val tools = RejoinUi.inset(this)
+        RejoinUi.add(body, tools, 12)
+        advancedLink = RejoinUi.smallAction(this, "Diagnostics and testing  +") {
             advanced.visibility = if (advanced.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-            advancedToggle.text = if (advanced.visibility == View.VISIBLE)
-                "Advanced & testing   −" else "Advanced & testing   +"
+            advancedLink.text = if (advanced.visibility == View.VISIBLE)
+                "Diagnostics and testing  −" else "Diagnostics and testing  +"
         }
-        RejoinUi.add(advancedCard, advancedToggle)
+        RejoinUi.add(tools, advancedLink)
         advanced = RejoinUi.column(this).apply { visibility = View.GONE }
-        RejoinUi.add(advancedCard, advanced, 8)
+        RejoinUi.add(tools, advanced, 10)
         RejoinUi.add(advanced, RejoinUi.label(this,
-            "These tools aren't needed for ordinary use. Logging out affects every device sharing the router.",
-            12f, RejoinUi.muted), 7)
-        RejoinUi.add(advanced, RejoinUi.action(this, "Sign out shared CU session", false) {
+            "Testing logout can interrupt everyone sharing the router.",
+            12f, RejoinUi.muted))
+        RejoinUi.add(advanced, RejoinUi.action(this, "Test sign-in once", false) {
+            confirmLogin()
+        }, 12)
+        RejoinUi.add(advanced, RejoinUi.action(this, "Log out shared session", false) {
             confirmLogout()
-        }, 15)
-        RejoinUi.add(advanced, RejoinUi.action(this, "Sign in once (test)", false) {
-            confirmManualLogin()
         }, 9)
-        RejoinUi.add(advanced, RejoinUi.action(this, "Check Wi-Fi internet", false) {
-            runCheck()
+        RejoinUi.add(advanced, RejoinUi.action(this, "Check internet", false) {
+            runTest("check")
         }, 9)
-        RejoinUi.add(advanced, RejoinUi.action(this, "Open CU browser fallback", false) {
-            if (LiveSessionTest.selectedWifiMatches(this)) startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse("http://172.16.2.1:1000/login?"))
-            )
-            else showResult("Trusted network", "Connect to your selected Wi-Fi first.")
+        RejoinUi.add(advanced, RejoinUi.action(this, "Open CU sign-in page", false) {
+            if (LiveSessionTest.selectedWifiMatches(this)) {
+                startActivity(Intent(Intent.ACTION_VIEW,
+                    Uri.parse("http://172.16.2.1:1000/login?")))
+            } else message("Not on trusted Wi-Fi", "Connect to a saved Wi-Fi network first.")
         }, 9)
-        RejoinUi.add(advanced, RejoinUi.action(this, "Erase saved account", false) {
+        RejoinUi.add(advanced, RejoinUi.action(this, "Erase all saved logins", false) {
             confirmErase()
         }, 9)
-
-        val footer = RejoinUi.label(this, "REJOIN  ·  PRIVATE BETA  ·  v2.0", 10f,
-            RejoinUi.muted, true).apply {
-            gravity = Gravity.CENTER
-            letterSpacing = 0.10f
-        }
-        RejoinUi.add(body, footer, 30)
+        RejoinUi.add(body, RejoinUi.label(this, "REJOIN  ·  v2.1",
+            11f, RejoinUi.muted).apply { gravity = Gravity.CENTER }, 27)
         refresh()
     }
 
-    private fun section(root: LinearLayout, title: String, top: Int) {
-        RejoinUi.add(root, RejoinUi.label(this, title, 11f, RejoinUi.muted, true)
-            .apply { letterSpacing = 0.14f }, top)
+    private fun heading(root: LinearLayout, label: String, top: Int) {
+        RejoinUi.add(root, RejoinUi.label(this, label, 11f, RejoinUi.muted, true)
+            .apply { letterSpacing = .13f }, top)
+    }
+
+    private fun currentProfile(): TrustedNetworks.Profile? =
+        WifiProbe.current(this)?.let { TrustedNetworks.find(this, it) }
+
+    private fun saveCurrentNetwork() {
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 52)
+            return
+        }
+        val snapshot = WifiProbe.current(this) ?: run {
+            message("Wi-Fi not found", "Connect to the router you want to save, then try again.")
+            return
+        }
+        val existing = TrustedNetworks.find(this, snapshot)
+        if (existing != null) {
+            startActivity(Intent(this, NetworkDetailsActivity::class.java)
+                .putExtra(NetworkDetailsActivity.EXTRA_ID, existing.id))
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Trust " + snapshot.ssid + "?")
+            .setMessage("Rejoin will recognize this router and use the default saved login. You can change its login later.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save Wi-Fi") { _, _ ->
+                val stored = TrustedNetworks.saveCurrent(this, snapshot)
+                if (stored == null) message("Couldn't save Wi-Fi",
+                    "You may have reached the saved network limit.")
+                else {
+                    ActivityHistory.record(this, "Trusted Wi-Fi added")
+                    refresh()
+                }
+            }.show()
+    }
+
+    private fun rebuildNetworks() {
+        networks.removeAllViews()
+        val profiles = TrustedNetworks.all(this)
+        val current = currentProfile()
+        val accountsList = CredentialVault.list(this)
+        if (profiles.isEmpty()) {
+            RejoinUi.add(networks, RejoinUi.label(this, "No Wi-Fi saved yet",
+                15f, RejoinUi.ink, true), 6)
+            RejoinUi.add(networks, RejoinUi.label(this,
+                "Connect to a campus router and add it here.",
+                12f, RejoinUi.muted), 5)
+            return
+        }
+        for ((index, profile) in profiles.withIndex()) {
+            if (index != 0) RejoinUi.add(networks, RejoinUi.rule(this), 13)
+            val row = RejoinUi.row(this)
+            val label = RejoinUi.column(this)
+            row.addView(label, LinearLayout.LayoutParams(0, -2, 1f))
+            RejoinUi.add(label, RejoinUi.label(this,
+                profile.label + if (current?.id == profile.id) "  ·  Here" else "",
+                15f, RejoinUi.ink, true))
+            val assigned = accountsList.firstOrNull { it.id == profile.loginId }
+            val name = assigned?.label ?: if (profile.loginId == null) "Default login" else "Login missing"
+            RejoinUi.add(label, RejoinUi.label(this, name, 12f, RejoinUi.muted), 6)
+            row.addView(RejoinUi.smallAction(this, "Manage  ›") {
+                startActivity(Intent(this, NetworkDetailsActivity::class.java)
+                    .putExtra(NetworkDetailsActivity.EXTRA_ID, profile.id))
+            })
+            RejoinUi.add(networks, row, 13)
+        }
+    }
+
+    private fun rebuildLogins() {
+        accounts.removeAllViews()
+        val all = CredentialVault.list(this)
+        if (all.isEmpty()) {
+            RejoinUi.add(accounts, RejoinUi.label(this, "No password saved",
+                15f, RejoinUi.ink, true), 7)
+            RejoinUi.add(accounts, RejoinUi.label(this,
+                "Save a login once and Rejoin can reuse it for all your trusted routers.",
+                12f, RejoinUi.muted), 6)
+        } else {
+            val default = all.firstOrNull { it.id == CredentialVault.defaultId(this) }
+            RejoinUi.add(accounts, RejoinUi.label(this,
+                "✓  Password saved on this device", 15f, RejoinUi.jade, true), 7)
+            RejoinUi.add(accounts, RejoinUi.label(this,
+                all.size.toString() + if (all.size == 1) " saved login" else " saved logins" +
+                    "  ·  Default: " + (default?.label ?: "Not set"), 12f, RejoinUi.muted), 5)
+        }
     }
 
     private fun rebuildModes() {
-        modes.removeAllViews()
+        recovery.removeAllViews()
         val current = RecoveryPrefs.mode(this)
-        for ((index, mode) in listOf(RecoveryPolicy.Mode.BALANCED,
-            RecoveryPolicy.Mode.RESPONSIVE).withIndex()) {
-            val selected = current == mode
-            val title = if (mode == RecoveryPolicy.Mode.BALANCED) "Balanced" else "Responsive"
-            val button = RejoinUi.action(this, title, selected) {
-                val p = getSharedPreferences("profile", MODE_PRIVATE)
-                p.edit().putString("recovery_mode", mode.name.lowercase()).commit()
-                if (RecoveryPrefs.enabled(this))
-                    RecoveryScheduler.schedule(this, 60_000L)
-                ActivityHistory.record(this, title + " recovery selected")
+        for ((i, mode) in listOf(RecoveryPolicy.Mode.BALANCED, RecoveryPolicy.Mode.RESPONSIVE).withIndex()) {
+            val selected = mode == current
+            val button = RejoinUi.action(this,
+                if (mode == RecoveryPolicy.Mode.BALANCED) "Balanced" else "Responsive", selected) {
+                getSharedPreferences("profile", MODE_PRIVATE).edit()
+                    .putString("recovery_mode", mode.name.lowercase()).commit()
+                if (RecoveryPrefs.enabled(this)) RecoveryScheduler.schedule(this, 60_000L)
                 rebuildModes()
             }
-            modes.addView(button, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                if (index == 0) rightMargin = RejoinUi.dp(this@SettingsActivity, 5)
+            recovery.addView(button, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                if (i == 0) rightMargin = RejoinUi.dp(this@SettingsActivity, 5)
                 else leftMargin = RejoinUi.dp(this@SettingsActivity, 5)
             })
         }
     }
 
-    private fun selectNetwork() {
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 52)
-            return
-        }
-        val wifi = WifiProbe.current(this)
-        if (wifi == null) {
-            showResult("Wi-Fi identity unavailable",
-                "Connect to your router and turn on Location, then try again.")
-            return
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Trust this Wi-Fi?")
-            .setMessage(wifi.ssid + "\n" + wifi.bssid +
-                "\n\nOnly this access point can use saved login credentials.")
+    private fun confirmLogin() {
+        AlertDialog.Builder(this).setTitle("Try one campus sign-in?")
+            .setMessage("Uses the saved login assigned to the Wi-Fi you're on.")
             .setNegativeButton("Cancel", null)
-            .setPositiveButton("Trust") { _, _ ->
-                WifiProbe.trust(this, wifi)
-                ActivityHistory.record(this, "Trusted Wi-Fi selected")
-                refresh()
-                if (RecoveryPrefs.enabled(this)) RecoveryScheduler.initialize(this)
-            }.show()
-    }
-
-    private fun showCredentialsDialog() {
-        val parent = RejoinUi.column(this).apply {
-            setPadding(RejoinUi.dp(this@SettingsActivity, 22), RejoinUi.dp(this@SettingsActivity, 8),
-                RejoinUi.dp(this@SettingsActivity, 22), 0)
-        }
-        val savedUid = CredentialVault.read(this)?.username.orEmpty()
-        val username = EditText(this).apply {
-            hint = "University UID"
-            setSingleLine(true)
-            setText(savedUid)
-            inputType = InputType.TYPE_CLASS_TEXT
-        }
-        val password = EditText(this).apply {
-            hint = "Campus Wi-Fi password"
-            setSingleLine(true)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        val consent = CheckBox(this).apply {
-            text = "I authorize Rejoin to authenticate this account through CU's HTTP portal, knowing that HTTP does not encrypt passwords in transit."
-            textSize = 13f
-            isChecked = getSharedPreferences("profile", MODE_PRIVATE)
-                .getBoolean("http_opt_in", false)
-        }
-        parent.addView(username)
-        parent.addView(password)
-        parent.addView(consent)
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("CU account")
-            .setView(parent)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Save", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                if (!consent.isChecked || username.text.isBlank() || password.text.isBlank()) {
-                    showResult("Incomplete setup",
-                        "Enter your UID and password, then acknowledge the HTTP security notice.")
-                    return@setOnClickListener
-                }
-                if (!CredentialVault.save(this, username.text.toString(), password.text.toString())) {
-                    showResult("Couldn't save credentials", "Check both fields and try again.")
-                    return@setOnClickListener
-                }
-                getSharedPreferences("profile", MODE_PRIVATE).edit()
-                    .putBoolean("http_opt_in", true).apply()
-                password.text.clear()
-                ActivityHistory.record(this, "Campus login updated")
-                dialog.dismiss()
-                refresh()
-            }
-        }
-        dialog.show()
+            .setPositiveButton("Sign in") { _, _ -> runTest("login") }.show()
     }
 
     private fun confirmLogout() {
-        AlertDialog.Builder(this)
-            .setTitle("Sign out everyone on this router?")
-            .setMessage("The shared CU session may close for all devices. This is a test, not routine recovery.")
+        AlertDialog.Builder(this).setTitle("Disconnect the shared connection?")
+            .setMessage("Other people connected to this router may lose internet until someone signs back in.")
             .setNegativeButton("Cancel", null)
-            .setPositiveButton("Sign out") { _, _ ->
+            .setPositiveButton("Log out") { _, _ ->
                 getSharedPreferences("profile", MODE_PRIVATE).edit()
-                    .putLong("manual_test_until", System.currentTimeMillis() + 10 * 60_000L)
-                    .apply()
-                execute("logout")
+                    .putLong("manual_test_until", System.currentTimeMillis() + 10 * 60_000L).commit()
+                runTest("logout")
             }.show()
     }
 
-    private fun confirmManualLogin() {
-        AlertDialog.Builder(this)
-            .setTitle("Try one campus sign-in?")
-            .setMessage("Uses your saved CU account. The gateway's HTTP traffic is not encrypted.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Sign in") { _, _ -> execute("login") }
-            .show()
+    private fun runTest(kind: String) {
+        worker.execute {
+            val result = try {
+                when (kind) {
+                    "login" -> SessionEngine.run(applicationContext, userInitiated = true,
+                        explicitlyLoggedOut = true)
+                    "logout" -> LiveSessionTest.logout(applicationContext)
+                    else -> {
+                        val state = InternetVerifier.check(applicationContext)
+                        state.state.name + ": " + state.details
+                    }
+                }
+            } catch (e: Exception) { "Could not complete (" + e.javaClass.simpleName + ")" }
+            runOnUiThread { message("Connection test", result) }
+        }
     }
 
-    private fun runCheck() = execute("check")
-
     private fun confirmErase() {
-        AlertDialog.Builder(this)
-            .setTitle("Erase your stored account?")
-            .setMessage("Automatic recovery will turn off, and this phone's saved credentials will be deleted.")
+        AlertDialog.Builder(this).setTitle("Erase every saved password?")
+            .setMessage("Automatic recovery will turn off. Trusted Wi-Fi entries will remain, but no login will be saved.")
             .setNegativeButton("Cancel", null)
-            .setPositiveButton("Erase") { _, _ ->
+            .setPositiveButton("Erase all") { _, _ ->
                 RecoveryScheduler.disable(this)
                 CredentialVault.clear(this)
-                ActivityHistory.record(this, "Stored account erased")
+                ActivityHistory.record(this, "All logins cleared")
                 refresh()
             }.show()
     }
 
-    private fun execute(action: String) {
-        executor.execute {
-            val result = try {
-                when (action) {
-                    "logout" -> LiveSessionTest.logout(applicationContext)
-                    "login" -> SessionEngine.run(applicationContext,
-                        userInitiated = true, explicitlyLoggedOut = true)
-                    else -> {
-                        val r = InternetVerifier.check(applicationContext)
-                        r.state.name + ": " + r.details
-                    }
-                }
-            } catch (e: Exception) { "Test unavailable (" + e.javaClass.simpleName + ")" }
-            runOnUiThread {
-                ActivityHistory.record(this, when (action) {
-                    "logout" -> "Manual logout requested"
-                    "login" -> "Manual login tested"
-                    else -> "Internet checked"
-                })
-                showResult("Connection test", result)
-            }
-        }
-    }
-
-    private fun showResult(title: String, message: String) {
-        AlertDialog.Builder(this)
-            .setTitle(title).setMessage(message)
+    private fun message(title: String, detail: String) {
+        AlertDialog.Builder(this).setTitle(title).setMessage(detail)
             .setPositiveButton("OK", null).show()
     }
 
     private fun refresh() {
-        if (!::networkLabel.isInitialized) return
-        val p = getSharedPreferences("profile", MODE_PRIVATE)
-        val ssid = p.getString("ssid", null)
-        networkLabel.text = if (ssid == null) "No trusted network yet"
-            else if (LiveSessionTest.selectedWifiMatches(this)) ssid + " · connected"
-            else ssid + " · currently away"
-        credentialsLabel.text = if (CredentialVault.hasCredentials(this))
-            "Credentials secured on this phone" else "No credentials saved"
+        if (!::networks.isInitialized) return
+        rebuildNetworks()
+        rebuildLogins()
+        rebuildModes()
     }
 
     override fun onResume() {
         super.onResume()
-        if (::networkLabel.isInitialized) refresh()
+        if (::networks.isInitialized) refresh()
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<out String>, results: IntArray
-    ) {
+    override fun onRequestPermissionsResult(requestCode: Int,
+        permissions: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, results)
         if (requestCode == 52 && results.isNotEmpty() &&
-            results[0] == PackageManager.PERMISSION_GRANTED) selectNetwork()
+            results[0] == PackageManager.PERMISSION_GRANTED) saveCurrentNetwork()
     }
 
     override fun onDestroy() {
-        executor.shutdownNow()
+        worker.shutdownNow()
         super.onDestroy()
     }
 }
