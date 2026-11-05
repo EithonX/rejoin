@@ -75,7 +75,25 @@ class MainActivity : Activity() {
                     }.start()
                 }.show()
         }
-        button("B. Verify internet (without DNS)") {
+        button("B. Log in once using saved CU credentials") {
+            AlertDialog.Builder(this)
+                .setTitle("Attempt one CU login?")
+                .setMessage("Uses the credentials already saved on your device and submits them once to CU over HTTP. Only do this on your selected Wi-Fi.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Log in once") { _, _ ->
+                    info.text = "Attempting one CU login..."
+                    Thread {
+                        val result = SessionEngine.run(
+                            applicationContext, userInitiated = true,
+                            explicitlyLoggedOut = true
+                        ) { stage ->
+                            runOnUiThread { info.text = stage }
+                        }
+                        runOnUiThread { info.text = result; refreshLabels() }
+                    }.start()
+                }.show()
+        }
+        button("C. Verify internet (without DNS)") {
             info.text = "Checking public internet through selected Wi-Fi..."
             Thread {
                 val result = InternetVerifier.check(applicationContext)
