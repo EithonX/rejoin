@@ -18,6 +18,19 @@ object SessionEngine {
         fun finish(message: String): String {
             prefs.edit().putString("last_result", message)
                 .putLong("last_checked", System.currentTimeMillis()).apply()
+            val event = when {
+                message.contains("LOGIN VERIFIED", true) ||
+                    message.contains("Internet verified automatically", true) -> "Session restored"
+                message.contains("already online", true) ||
+                    message.contains("Internet online", true) ||
+                    message.startsWith("Online") -> "Internet connected"
+                message.contains("cooldown", true) -> "Recovery retry paused"
+                message.contains("portal detected", true) ||
+                    message.contains("Sign-in needed", true) -> "Sign-in required"
+                message.contains("no password sent", true) -> "No login sent: safety check"
+                else -> null
+            }
+            if (event != null) ActivityHistory.record(context, event)
             return message
         }
         try {
@@ -54,6 +67,7 @@ object SessionEngine {
                 if (verified.state == InternetVerifier.State.ONLINE) {
                     prefs.edit().putLong("last_success", System.currentTimeMillis())
                         .remove("manual_test_until").apply()
+                    NetworkStatusHint.requestAfterVerifiedOnline(context)
                     return finish("LOGIN VERIFIED: " + verified.details)
                 }
                 return finish(submitted.summary + "; verification: " +
@@ -104,6 +118,7 @@ object SessionEngine {
             val verified = InternetVerifier.check(context)
             return if (verified.state == InternetVerifier.State.ONLINE) {
                 prefs.edit().putLong("last_success", System.currentTimeMillis()).apply()
+                NetworkStatusHint.requestAfterVerifiedOnline(context)
                 finish("Internet verified automatically: " + verified.details)
             } else {
                 finish(submitted.summary + "; verification: " + verified.details +
