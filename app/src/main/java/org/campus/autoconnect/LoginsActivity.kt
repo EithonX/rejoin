@@ -16,6 +16,7 @@ import android.widget.TextView
 class LoginsActivity : Activity() {
     private lateinit var listing: LinearLayout
     private lateinit var headline: TextView
+    private lateinit var addLoginButton: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,9 +51,10 @@ class LoginsActivity : Activity() {
         RejoinUi.add(summary, RejoinUi.label(this,
             "Campus HTTP sign-in does not encrypt credentials in transit. Saving a login is an opt-in choice.",
             12f, RejoinUi.amber), 13)
-        RejoinUi.add(summary, RejoinUi.action(this, "Add another login", false) {
+        addLoginButton = RejoinUi.action(this, "Save a login", false) {
             showEditor(null)
-        }, 17)
+        }
+        RejoinUi.add(summary, addLoginButton, 17)
 
         val entries = RejoinUi.inset(this)
         RejoinUi.add(body, entries, 15)
@@ -70,6 +72,7 @@ class LoginsActivity : Activity() {
         if (!::listing.isInitialized) return
         listing.removeAllViews()
         val accounts = CredentialVault.list(this)
+        addLoginButton.text = if (accounts.isEmpty()) "Save your login" else "Add another login"
         headline.text = when (accounts.size) {
             0 -> "No password saved"
             1 -> "✓  Password saved on this device"
