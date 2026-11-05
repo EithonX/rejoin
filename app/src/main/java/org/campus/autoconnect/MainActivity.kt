@@ -56,7 +56,7 @@ class MainActivity : Activity() {
             })
         }
         label("Campus AutoConnect Lab", 24f)
-        label("v0.7 — Direct login recovery • stage diagnostics", 14f)
+        label("v0.8 — FortiGate redirect-aware native login", 14f)
         profile = label("No selected network", 15f)
         scheduler = label("Automatic repair: disabled", 15f)
         info = label("Set up a trusted network first.")
