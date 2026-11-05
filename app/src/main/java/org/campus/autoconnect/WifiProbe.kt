@@ -50,9 +50,7 @@ object WifiProbe {
         fun validBssid(value: String?): Boolean {
             return !value.isNullOrBlank() && !value.equals("02:00:00:00:00:00", true)
         }
-        val trusted = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
-        val ssidTarget = trusted.getString("ssid", null)
-        val bssidTarget = trusted.getString("bssid", null)
+        val trustedProfiles = TrustedNetworks.all(context)
         var fallback: Snapshot? = null
         for (network in wifiNetworks) {
             val cap = cm.getNetworkCapabilities(network)
@@ -62,7 +60,7 @@ object WifiProbe {
             val bssid = modern?.bssid
             if (ssid != null && validBssid(bssid)) {
                 val snap = Snapshot(network, ssid, bssid!!)
-                if (ssid == ssidTarget && bssid.equals(bssidTarget, true)) return snap
+                if (trustedProfiles.any { TrustedNetworks.matches(it, ssid, bssid!!) }) return snap
                 fallback = fallback ?: snap
             }
         }
@@ -80,14 +78,13 @@ object WifiProbe {
     }
 
     fun trust(context: Context, snapshot: Snapshot) {
-        context.getSharedPreferences("profile", Context.MODE_PRIVATE).edit()
-            .putString("ssid", snapshot.ssid).putString("bssid", snapshot.bssid).commit()
+        TrustedNetworks.saveCurrent(context, snapshot)
     }
 
     fun describe(context: Context): String {
-        val p = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
-        val ssid = p.getString("ssid", null) ?: return "No trusted network"
-        return "Trusted SSID: " + ssid + "\nBSSID: " + p.getString("bssid", "")
+        val all = TrustedNetworks.all(context)
+        if (all.isEmpty()) return "No trusted networks"
+        return all.joinToString("\n") { it.label + " · " + it.ssid }
     }
 
     private data class ProbeHttp(val code: Int, val response: String)
@@ -133,9 +130,8 @@ object WifiProbe {
     fun probe(context: Context, allowDns: Boolean = false): Result {
         val pref = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
         val snapshot = current(context) ?: return Result("Wi-Fi identity unavailable", null, false)
-        if (snapshot.ssid != pref.getString("ssid", null) ||
-            !snapshot.bssid.equals(pref.getString("bssid", null), true)) {
-            return Result("Not the selected Wi-Fi", null, false)
+        if (TrustedNetworks.find(context, snapshot) == null) {
+            return Result("Not a trusted Wi-Fi", null, false)
         }
         val targets = listOf(CHECK_HOST, "clients3.google.com")
         val findings = mutableListOf<String>()
