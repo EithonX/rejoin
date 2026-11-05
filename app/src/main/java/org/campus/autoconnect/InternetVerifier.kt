@@ -28,10 +28,8 @@ object InternetVerifier {
     fun check(context: Context, requiredNetwork: Network? = null): Result {
         val snapshot = WifiProbe.current(context, requiredNetwork)
             ?: return Result(State.UNKNOWN, "Wi-Fi identity not available")
-        val prefs = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
-        if (snapshot.ssid != prefs.getString("ssid", null) ||
-            !snapshot.bssid.equals(prefs.getString("bssid", null), true))
-            return Result(State.UNKNOWN, "Not the trusted Wi-Fi; no test sent")
+        if (TrustedNetworks.find(context, snapshot) == null)
+            return Result(State.UNKNOWN, "Not a trusted Wi-Fi; no test sent")
 
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val caps = cm.getNetworkCapabilities(snapshot.network)
