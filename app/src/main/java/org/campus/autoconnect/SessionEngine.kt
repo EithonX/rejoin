@@ -21,6 +21,10 @@ object SessionEngine {
             return message
         }
         try {
+            if (!userInitiated && System.currentTimeMillis() <
+                prefs.getLong("manual_test_until", 0L)) {
+                return finish("Manual session test active; background repair temporarily paused")
+            }
             // In the explicit test, we have just issued a user-approved logout.
             // Skip pre-login DNS/probe loops entirely; go straight to the actual
             // FortiGate form and verify connectivity after submitting.
@@ -41,21 +45,24 @@ object SessionEngine {
                 )
                 progress("Stage 3: Verifying restored internet over Wi-Fi")
                 Thread.sleep(1000L)
-                val verified = WifiProbe.probe(context)
-                if (verified.status == "Online") {
+                val verified = InternetVerifier.check(context)
+                if (verified.state == InternetVerifier.State.ONLINE) {
                     prefs.edit().putLong("last_success", System.currentTimeMillis()).apply()
-                    return finish("Internet restored automatically (HTTP 204)")
+                    return finish("LOGIN VERIFIED: " + verified.details)
                 }
                 return finish(submitted.summary + "; verification: " +
-                    verified.status + ". No repeated login.")
+                    verified.details + ". This is not proof the login was rejected.")
             }
 
             val state = WifiProbe.probe(context)
             if (!state.matched) return finish(state.status + "; no action")
             if (state.status == "Online") return finish("Online — no authentication needed")
-            if (state.status != "Captive portal detected" && !explicitlyLoggedOut) {
-                return finish(state.status + " — not a confirmed captive portal")
-            }
+            val publicCheck = InternetVerifier.check(context)
+            if (publicCheck.state == InternetVerifier.State.ONLINE)
+                return finish("Internet online; no login: " + publicCheck.details)
+            if (state.status != "Captive portal detected" &&
+                publicCheck.state != InternetVerifier.State.PORTAL)
+                return finish("Portal unconfirmed: " + publicCheck.details + "; no password sent")
             if (!prefs.getBoolean("auto_enabled", false) || !prefs.getBoolean("http_opt_in", false)) {
                 return finish("CU portal detected; automatic login is disabled")
             }
@@ -72,11 +79,11 @@ object SessionEngine {
             } else {
                 Thread.sleep(900)
             }
-            val again = WifiProbe.probe(context)
-            if (again.status == "Online") return finish("Another device restored internet; no login needed")
-            if (again.status != "Captive portal detected" && !explicitlyLoggedOut) {
-                return finish("Portal no longer confirmed; did not submit credentials: " + again.status)
-            }
+            val again = InternetVerifier.check(context)
+            if (again.state == InternetVerifier.State.ONLINE)
+                return finish("Another device restored internet; no login needed")
+            if (again.state != InternetVerifier.State.PORTAL)
+                return finish("Portal no longer confirmed: " + again.details + "; no login sent")
 
             // Persist before POST, so a killed process will not cause a login storm.
             prefs.edit().putLong("next_allowed", System.currentTimeMillis() + COOLDOWN_MS)
@@ -88,12 +95,12 @@ object SessionEngine {
             val submitted = FortinetLoginV2.submitOnce(context, snapshot.network, credentials.username, credentials.password, progress)
             progress("Stage 3/3: Verifying internet (no DNS lookup)")
             Thread.sleep(1000)
-            val verified = WifiProbe.probe(context)
-            return if (verified.status == "Online") {
+            val verified = InternetVerifier.check(context)
+            return if (verified.state == InternetVerifier.State.ONLINE) {
                 prefs.edit().putLong("last_success", System.currentTimeMillis()).apply()
-                finish("Internet restored automatically")
+                finish("Internet verified automatically: " + verified.details)
             } else {
-                finish(submitted.summary + "; verification: " + verified.status +
+                finish(submitted.summary + "; verification: " + verified.details +
                     "; no immediate retry.")
             }
         } catch (_: InterruptedException) {
