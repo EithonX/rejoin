@@ -206,6 +206,7 @@ object CredentialVault {
             .remove(KEY).remove(LEGACY).commit()
         context.getSharedPreferences("profile", Context.MODE_PRIVATE)
             .edit().putBoolean("auto_enabled", false).commit()
+        TrustedNetworks.resetAllAssignments(context)
         try {
             val store = KeyStore.getInstance("AndroidKeyStore")
             store.load(null)
