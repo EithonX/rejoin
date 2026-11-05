@@ -58,9 +58,8 @@ object SessionEngine {
 
             val snapshot = WifiProbe.current(context, requiredNetwork)
                 ?: return finish("Trusted Wi-Fi identity unavailable; check background location access")
-            if (snapshot.ssid != prefs.getString("ssid", null) ||
-                !snapshot.bssid.equals(prefs.getString("bssid", null), true))
-                return finish("Not the trusted Wi-Fi; no request sent")
+            val trusted = TrustedNetworks.find(context, snapshot)
+                ?: return finish("Not a trusted Wi-Fi; no request sent")
 
             progress("Checking Wi-Fi access")
             val initial = InternetVerifier.check(context, snapshot.network)
@@ -73,13 +72,13 @@ object SessionEngine {
             }
             if (!prefs.getBoolean("http_opt_in", false))
                 return finish("CU HTTP login consent not granted")
-            if (!CredentialVault.hasCredentials(context))
-                return finish("Credentials not configured")
+            if (!CredentialVault.hasLoginFor(context, trusted))
+                return finish("No saved login for " + trusted.label + "; open Settings")
 
             // Only background attempts are rate limited. User-initiated attempts
             // require an explicit tap and are always single-shot.
             if (!userInitiated && System.currentTimeMillis() <
-                prefs.getLong("next_allowed", 0L))
+                prefs.getLong("next_allowed_" + trusted.id, 0L))
                 return finish("Portal detected; retry cooldown active")
             if (!userInitiated) {
                 progress("Checking whether another device has restored internet")
@@ -94,13 +93,12 @@ object SessionEngine {
             // Validate identity again immediately before submitting credentials.
             val current = WifiProbe.current(context, snapshot.network)
                 ?: return finish("Trusted Wi-Fi changed; login cancelled")
-            if (current.ssid != snapshot.ssid ||
-                !current.bssid.equals(snapshot.bssid, true))
+            if (TrustedNetworks.find(context, current)?.id != trusted.id)
                 return finish("Trusted Wi-Fi changed; login cancelled")
-            val account = CredentialVault.read(context)
-                ?: return finish("Encrypted credentials unavailable")
+            val account = CredentialVault.resolve(context, trusted)
+                ?: return finish("Saved login unavailable for " + trusted.label)
             if (!userInitiated) {
-                prefs.edit().putLong("next_allowed", System.currentTimeMillis() + COOLDOWN_MS)
+                prefs.edit().putLong("next_allowed_" + trusted.id, System.currentTimeMillis() + COOLDOWN_MS)
                     .commit()
             }
             prefs.edit().putLong("last_attempt", System.currentTimeMillis())
