@@ -112,7 +112,6 @@ object TrustedNetworks {
     fun assignLogin(context: Context, profileId: String, loginId: String?): Boolean {
         val entries = all(context)
         if (entries.none { it.id == profileId }) return false
-        if (loginId != null && CredentialVault.list(context).none { it.id == loginId }) return false
         return persist(context, entries.map {
             if (it.id == profileId) it.copy(loginId = loginId) else it
         })
@@ -125,6 +124,14 @@ object TrustedNetworks {
             persist(context, entries.map {
                 if (it.loginId == loginId) it.copy(loginId = null) else it
             })
+        }
+    }
+
+    @Synchronized
+    fun resetAllAssignments(context: Context) {
+        val entries = all(context)
+        if (entries.any { it.loginId != null }) {
+            persist(context, entries.map { it.copy(loginId = null) })
         }
     }
 
