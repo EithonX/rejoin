@@ -36,17 +36,17 @@ object SessionEngine {
                     return finish("Trusted Wi-Fi mismatch; no password sent")
                 val credentials = CredentialVault.read(context)
                     ?: return finish("Could not decrypt saved credentials")
-                val submitted = FortinetWire.submitOnce(
-                    snapshot.network, credentials.username, credentials.password, progress
+                val submitted = FortinetLoginV2.submitOnce(
+                    context, snapshot.network, credentials.username, credentials.password, progress
                 )
-                progress("Stage 3/3: Verifying internet (no DNS lookup)")
+                progress("Stage 3: Verifying restored internet over Wi-Fi")
                 Thread.sleep(1000L)
                 val verified = WifiProbe.probe(context)
                 if (verified.status == "Online") {
                     prefs.edit().putLong("last_success", System.currentTimeMillis()).apply()
                     return finish("Internet restored automatically (HTTP 204)")
                 }
-                return finish(submitted.description + "; verification: " +
+                return finish(submitted.summary + "; verification: " +
                     verified.status + ". No repeated login.")
             }
 
@@ -85,7 +85,7 @@ object SessionEngine {
             val snapshot = WifiProbe.current(context)
                 ?: return finish("Wi-Fi identity unavailable; login cancelled")
             if (!LiveSessionTest.selectedWifiMatches(context)) return finish("Trusted Wi-Fi changed; login cancelled")
-            val submitted = FortinetWire.submitOnce(snapshot.network, credentials.username, credentials.password, progress)
+            val submitted = FortinetLoginV2.submitOnce(context, snapshot.network, credentials.username, credentials.password, progress)
             progress("Stage 3/3: Verifying internet (no DNS lookup)")
             Thread.sleep(1000)
             val verified = WifiProbe.probe(context)
@@ -93,7 +93,7 @@ object SessionEngine {
                 prefs.edit().putLong("last_success", System.currentTimeMillis()).apply()
                 finish("Internet restored automatically")
             } else {
-                finish(submitted.description + "; verification: " + verified.status +
+                finish(submitted.summary + "; verification: " + verified.status +
                     "; no immediate retry.")
             }
         } catch (_: InterruptedException) {
