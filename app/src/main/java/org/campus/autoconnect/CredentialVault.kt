@@ -81,7 +81,7 @@ object CredentialVault {
                 items.add(Record(id, obj.optString("label").ifBlank { "Campus login" },
                     user, pass))
             }
-            Vault(json.optString("defaultId").ifBlank { null }, items)
+            Vault(json.optString("defaultId").takeIf { it.isNotBlank() }, items)
         } catch (_: Exception) { null }
         finally { bytes.fill(0) }
     }
