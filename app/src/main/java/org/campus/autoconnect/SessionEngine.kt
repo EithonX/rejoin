@@ -29,8 +29,8 @@ object SessionEngine {
             // Skip pre-login DNS/probe loops entirely; go straight to the actual
             // FortiGate form and verify connectivity after submitting.
             if (explicitlyLoggedOut) {
-                if (!prefs.getBoolean("auto_enabled", false) || !prefs.getBoolean("http_opt_in", false))
-                    return finish("Automatic login disabled or HTTP consent missing")
+                if (!prefs.getBoolean("http_opt_in", false))
+                    return finish("CU login permission has not been granted")
                 if (!CredentialVault.hasCredentials(context))
                     return finish("Encrypted credentials not configured")
                 progress("Stage 0/3: Checking trusted Wi-Fi")
@@ -38,6 +38,11 @@ object SessionEngine {
                     ?: return finish("Wi-Fi identity unavailable")
                 if (!LiveSessionTest.selectedWifiMatches(context))
                     return finish("Trusted Wi-Fi mismatch; no password sent")
+                val status = InternetVerifier.check(context)
+                if (status.state == InternetVerifier.State.ONLINE) {
+                    prefs.edit().remove("manual_test_until").apply()
+                    return finish("Internet already online; no login request needed")
+                }
                 val credentials = CredentialVault.read(context)
                     ?: return finish("Could not decrypt saved credentials")
                 val submitted = FortinetLoginV2.submitOnce(
@@ -47,7 +52,8 @@ object SessionEngine {
                 Thread.sleep(1000L)
                 val verified = InternetVerifier.check(context)
                 if (verified.state == InternetVerifier.State.ONLINE) {
-                    prefs.edit().putLong("last_success", System.currentTimeMillis()).apply()
+                    prefs.edit().putLong("last_success", System.currentTimeMillis())
+                        .remove("manual_test_until").apply()
                     return finish("LOGIN VERIFIED: " + verified.details)
                 }
                 return finish(submitted.summary + "; verification: " +
