@@ -292,9 +292,12 @@ class MainActivity : Activity() {
                     if (state == InternetVerifier.State.ONLINE)
                         NetworkStatusHint.requestAfterVerifiedOnline(applicationContext)
                 } else {
-                    outcome = SessionEngine.run(applicationContext, userInitiated = true) { step ->
-                        main.post { if (busy.get()) statusSubtitle.text = step }
-                    }
+                    outcome = SessionEngine.run(
+                        applicationContext, userInitiated = true,
+                        progress = { step ->
+                            main.post { if (busy.get()) statusSubtitle.text = step }
+                        }
+                    )
                     state = when {
                         outcome.contains("LOGIN VERIFIED", true) ||
                             outcome.contains("Internet online", true) -> InternetVerifier.State.ONLINE
