@@ -32,9 +32,9 @@ object RecoveryPolicy {
             text.contains("already online") || text.contains("internet online") ||
                 text.contains("no authentication needed") || text.startsWith("online") ||
                 text.contains("connected") && !text.contains("not connected") -> Outcome.HEALTHY
-            text.contains("portal detected") || text.contains("sign-in required") -> Outcome.PORTAL
             text.contains("failed") || text.contains("retry cooldown") ||
                 text.contains("not yet verified") -> Outcome.FAILED
+            text.contains("portal detected") || text.contains("sign-in required") -> Outcome.PORTAL
             else -> Outcome.UNKNOWN
         }
     }
