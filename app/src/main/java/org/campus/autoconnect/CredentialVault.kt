@@ -177,7 +177,8 @@ object CredentialVault {
     @Synchronized
     fun resolve(context: Context, profile: TrustedNetworks.Profile): Credentials? {
         val state = load(context) ?: return null
-        val id = profile.loginId ?: state.defaultId ?: state.items.firstOrNull()?.id
+        val id = LoginSelection.choose(profile.loginId, state.defaultId,
+            state.items.map { it.id })
         // An explicitly linked account that has gone missing must never silently
         // submit a different account's password.
         return state.items.firstOrNull { it.id == id }?.let { Credentials(it.user, it.password) }
