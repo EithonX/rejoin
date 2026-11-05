@@ -42,4 +42,9 @@ object ActivityHistory {
             Entry(o.optLong("time"), o.optString("event"))
         }.filter { it.time > 0L && it.event.isNotBlank() }
     }
+    @Synchronized
+    fun clear(context: Context) {
+        context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
+            .edit().remove(KEY).apply()
+    }
 }
