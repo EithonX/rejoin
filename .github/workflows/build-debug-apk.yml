@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Rejoin APK
 on:
   workflow_dispatch:
   push:
@@ -21,10 +21,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Run recovery policy tests and compile APK
+      - name: Test policy and compile Rejoin APK
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: CampusAutoConnect-debug-apk
+          name: Rejoin-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
