@@ -3,7 +3,6 @@ package org.campus.autoconnect
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -16,7 +15,6 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
 import java.text.DateFormat
 import java.util.Date
@@ -36,7 +34,6 @@ class MainActivity : Activity() {
     private var pendingRecovery: Runnable? = null
     private var lastPortalEvent = 0L
     private var lastNetworkKey: String? = null
-    private var ignoreSwitch = false
     private var observed: InternetVerifier.State? = null
 
     private lateinit var stateMark: ConnectionMark
@@ -46,10 +43,7 @@ class MainActivity : Activity() {
     private lateinit var networkLine: TextView
     private lateinit var primaryButton: TextView
     private lateinit var alternateButton: TextView
-    private lateinit var autoSwitch: Switch
-    private lateinit var autoText: TextView
-    private lateinit var autoHint: TextView
-    private lateinit var troubleshoot: TextView
+    private lateinit var protectionContainer: LinearLayout
     private lateinit var timestamp: TextView
     private lateinit var activityText: TextView
 
@@ -130,35 +124,8 @@ class MainActivity : Activity() {
             topMargin = RejoinUi.dp(this@MainActivity, 38)
         })
 
-        val protectionRow = RejoinUi.row(this).apply {
-            setPadding(0, RejoinUi.dp(this@MainActivity, 18), 0,
-                RejoinUi.dp(this@MainActivity, 16))
-        }
-        val protectionCopy = RejoinUi.column(this)
-        protectionRow.addView(protectionCopy, LinearLayout.LayoutParams(0, -2, 1f))
-        RejoinUi.add(protectionCopy,
-            RejoinUi.label(this, "Auto-reconnect", 16f, RejoinUi.ink, true))
-        autoText = RejoinUi.label(this, "Off", 13f, RejoinUi.muted)
-        RejoinUi.add(protectionCopy, autoText, 6)
-        autoSwitch = Switch(this).apply {
-            contentDescription = "Automatic Wi-Fi reconnection"
-            thumbTintList = ColorStateList.valueOf(RejoinUi.jade)
-            trackTintList = ColorStateList.valueOf(RejoinUi.raised)
-        }
-        protectionRow.addView(autoSwitch)
-        RejoinUi.add(body, protectionRow)
-        autoSwitch.setOnCheckedChangeListener { _, enabled ->
-            if (!ignoreSwitch) setAutoRecovery(enabled)
-        }
-
-        autoHint = RejoinUi.label(this, "", 12f, RejoinUi.amber).apply {
-            maxLines = 3
-        }
-        RejoinUi.add(body, autoHint, 2)
-        troubleshoot = RejoinUi.smallAction(this, "Fix background access  →") {
-            openSettings()
-        }
-        RejoinUi.add(body, troubleshoot, 3)
+        protectionContainer = RejoinUi.column(this)
+        RejoinUi.add(body, protectionContainer, 5)
 
         // Last meaningful facts are secondary, not the app's content.
         val lowerLine = View(this).apply { setBackgroundColor(RejoinUi.line) }
@@ -195,37 +162,6 @@ class MainActivity : Activity() {
 
     private fun openSettings() {
         startActivity(Intent(this, SettingsActivity::class.java))
-    }
-
-    private fun setAutoRecovery(enabled: Boolean) {
-        val prefs = getSharedPreferences("profile", MODE_PRIVATE)
-        if (enabled) {
-            val ready = TrustedNetworks.all(this).any {
-                CredentialVault.hasLoginFor(this, it)
-            } && prefs.getBoolean("http_opt_in", false)
-            if (!ready) {
-                ignoreSwitch = true
-                autoSwitch.isChecked = false
-                ignoreSwitch = false
-                openSettings()
-                return
-            }
-            prefs.edit().putBoolean("auto_enabled", true).commit()
-            if (RecoveryScheduler.schedule(this, 15_000L)) {
-                RecoveryScheduler.registerWifiEvents(this)
-                ActivityHistory.record(this, "Automatic recovery enabled")
-            } else {
-                prefs.edit().putBoolean("auto_enabled", false).commit()
-                ignoreSwitch = true
-                autoSwitch.isChecked = false
-                ignoreSwitch = false
-            }
-        } else {
-            prefs.edit().putBoolean("auto_enabled", false).commit()
-            RecoveryScheduler.disable(this)
-            ActivityHistory.record(this, "Automatic recovery paused")
-        }
-        render()
     }
 
     private fun runCheck(repair: Boolean) {
@@ -303,21 +239,17 @@ class MainActivity : Activity() {
         networkLine.text = current?.label ?: if (profiles.isEmpty()) ""
             else "Saved networks: " + profiles.size
 
-        val healthy = BackgroundHealth.inspect(this)
-        ignoreSwitch = true
-        autoSwitch.isChecked = RecoveryPrefs.enabled(this)
-        ignoreSwitch = false
-        autoText.text = when (healthy.level) {
-            BackgroundHealth.Level.PAUSED -> "Off"
-            BackgroundHealth.Level.READY -> "Active in the background"
-            BackgroundHealth.Level.NEEDS_ACTION -> "Needs your attention"
+        val health = BackgroundHealth.inspect(this)
+        protectionContainer.removeAllViews()
+        val status = when (health.level) {
+            BackgroundHealth.Level.READY -> "On · Background protection ready"
+            BackgroundHealth.Level.PAUSED -> "Off · Tap to enable"
+            BackgroundHealth.Level.NEEDS_ACTION -> "Needs attention · Tap to fix"
         }
-        autoHint.visibility = if (healthy.level == BackgroundHealth.Level.NEEDS_ACTION)
-            View.VISIBLE else View.GONE
-        autoHint.text = if (healthy.level == BackgroundHealth.Level.NEEDS_ACTION)
-            healthy.description else ""
-        troubleshoot.visibility = if (healthy.level == BackgroundHealth.Level.NEEDS_ACTION)
-            View.VISIBLE else View.GONE
+        protectionContainer.addView(RejoinUi.navRow(this,
+            "Auto-reconnect", status, R.drawable.ic_shield) {
+            startActivity(Intent(this, ProtectionActivity::class.java))
+        })
 
         timestamp.text = if (checkedAt > 0)
             DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
