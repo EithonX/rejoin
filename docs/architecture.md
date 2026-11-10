@@ -30,11 +30,11 @@ Uncertain connectivity never authorizes an unattended login. Only an explicit us
 
 ## Background scheduling
 
-`RecoveryScheduler` maintains one persistent periodic `JobScheduler` job (ID 417) with a Wi-Fi network constraint and an optional separate one-shot Wi-Fi-arrival job (ID 418). The periodic job belongs to Android and remains scheduled even if the Rejoin process is killed; workers no longer need to schedule another job from `jobFinished`. Jobs use their assigned `Network` when available. There is no permanent foreground service or tight polling loop.
+`RecoveryScheduler` keeps a persistent periodic job (ID 417) and uses a one-shot job (ID 418) for early recovery. A passive Wi-Fi listener asks Android to wake Rejoin when it detects a captive portal. The early job checks for a saved network and login before scheduling and again before making a network request. It skips Wi-Fi that Android already validates.
 
-Balanced requests a 30-minute periodic interval; Responsive requests 15 minutes. These values are not precise deadlines. Android can defer work, especially during Doze, and Motorola may further restrict apps. The upstream FortiGate session can expire without a Wi-Fi link event, which is why a periodic verification remains necessary. `BackgroundHealth` reports the most recent OS-launched check and restrictions that could prevent it; the user may choose to adjust battery/background-location settings.
+Balanced requests a 30-minute fallback interval and Responsive requests 15 minutes. Android can defer these jobs, especially during Doze. Jobs use the Wi-Fi network Android assigns when available. `BackgroundHealth` shows the last OS-launched check and any background permission or scheduling issue.
 
-The Wi-Fi PendingIntent callback reports *network availability*, not silent captive-portal expiry. It must not be described as a push notification from the campus firewall.
+The listener uses Android’s own portal detection. A FortiGate session can expire while Android still considers Wi-Fi online, so the periodic job does its own check. After a check, Rejoin renews the one-shot listener once Android stops reporting captive Wi-Fi.
 
 ## Security boundary
 
