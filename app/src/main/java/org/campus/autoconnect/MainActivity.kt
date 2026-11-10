@@ -71,9 +71,22 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(0, -2, 1f).apply {
                 leftMargin = RejoinUi.dp(this@MainActivity, 10)
             })
-        val settings = RejoinUi.smallAction(this, "Settings") { openSettings() }
-        settings.contentDescription = "Open Rejoin settings"
-        header.addView(settings)
+        val settings = RejoinUi.icon(this, R.drawable.ic_settings_outline, 25).apply {
+            contentDescription = "Open settings"
+            isClickable = true
+            isFocusable = true
+            setPadding(RejoinUi.dp(this@MainActivity, 10),
+                RejoinUi.dp(this@MainActivity, 10),
+                RejoinUi.dp(this@MainActivity, 10),
+                RejoinUi.dp(this@MainActivity, 10))
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            background = android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(RejoinUi.raised),
+                null, RejoinUi.surface(this@MainActivity, android.graphics.Color.WHITE, 12))
+            setOnClickListener { openSettings() }
+        }
+        header.addView(settings, LinearLayout.LayoutParams(
+            RejoinUi.dp(this, 48), RejoinUi.dp(this, 48)))
         RejoinUi.add(body, header)
 
         // One focal area; no feature cards, fake metrics, or repeated labels.
@@ -140,7 +153,7 @@ class MainActivity : Activity() {
         RejoinUi.add(lastInfo, RejoinUi.label(this, "Last checked", 12f, RejoinUi.muted))
         timestamp = RejoinUi.label(this, "Not yet", 14f, RejoinUi.ink, true)
         RejoinUi.add(lastInfo, timestamp, 5)
-        lastRow.addView(RejoinUi.smallAction(this, "Activity  →") {
+        lastRow.addView(RejoinUi.smallAction(this, "History") {
             startActivity(Intent(this, ActivityLogActivity::class.java))
         })
         RejoinUi.add(body, lastRow, 0)
