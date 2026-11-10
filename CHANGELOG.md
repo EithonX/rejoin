@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.0-rc2
+
+- Start an early background check when Android detects a captive portal. Keep the scheduled fallback for silent session expiry.
+- Skip early checks on unsaved Wi-Fi and Wi-Fi Android already reports as online.
+- Keep early checks on Wi-Fi when Android defers them. Skip recovery when Rejoin cannot safely identify the access point.
+
 ## 2.4.0-rc1
 
 - Check GitHub Releases for verified in-app updates.

@@ -25,8 +25,8 @@ android {
         applicationId = "com.eithonx.rejoin"
         minSdk = 23
         targetSdk = 35
-        versionCode = 19
-        versionName = "2.4.0-rc1"
+        versionCode = 20
+        versionName = "2.4.0-rc2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
