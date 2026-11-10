@@ -24,14 +24,14 @@ Saving a new Wi-Fi requires connecting to it first. Rejoin matches both SSID and
 
 ## What happens in the background?
 
-Rejoin has no always-running polling service. It listens for Wi-Fi changes while open, registers a Wi-Fi availability callback, and uses Android-managed one-shot jobs when background recovery is enabled. A small IP-only check is made only when needed; a failed or uncertain network check **doesn't** authorize sending a password.
+Rejoin has no always-running polling service. It listens for Wi-Fi changes while open, registers a Wi-Fi availability callback, and uses a **persistent Android periodic job** to avoid losing future checks if the app process is killed. A separate one-shot check runs when Android detects a newly available Wi-Fi network. A small IP-only check is made only when needed; a failed or uncertain network check **doesn't** authorize sending a password.
 
 | Setting | Healthy-network backup check |
 | --- | --- |
 | Balanced | Requested after about 30 minutes |
 | Responsive | Requested after about 15 minutes |
 
-Android may delay either check during Doze or battery restrictions. An upstream FortiGate timeout can be silent, so instant recovery can't be guaranteed. See [technical notes](docs/architecture.md) for the state model and remaining limitations.
+Android may delay either check during Doze or battery restrictions. An upstream FortiGate timeout can be silent, so instant recovery can't be guaranteed. **Rejoin → Settings → Background access** reports the last actual background check and whether the app needs location/battery permissions. On supported Motorola phones, choose **Always allow** under Battery → Manage background apps when you want reliable unattended recovery; this remains the user's decision. See [technical notes](docs/architecture.md) for limitations.
 
 ## Security and privacy
 
@@ -65,7 +65,8 @@ Download `Rejoin-debug-apk` from the most recent successful [Actions run](https:
 - `SessionEngine`: conservative single-flight recovery
 - `FortinetLoginV2`: working campus-specific authentication adapter
 - `InternetVerifier`: Wi-Fi-bound, DNS-independent verification
-- `RecoveryScheduler`: Android-managed scheduling
+- `RecoveryScheduler`: persistent periodic Android job plus one-shot Wi-Fi event checks
+- `BackgroundHealth`: actionable checks for background location, JobScheduler and battery restrictions
 
 The previously working builds are preserved on `backup/rejoin-v2` and `backup/campus-autoconnect-v1`.
 

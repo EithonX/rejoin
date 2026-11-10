@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.0 beta — background reliability and focused home
+
+- Replaced a fragile chain of one-shot maintenance jobs with a persistent Android periodic job and a separate Wi-Fi-available check.
+- Added last-background-run diagnostics and checks for background location, JobScheduler, and battery restrictions.
+- Redesigned Home around a single connection state and context-sensitive action, with simpler navigation and less promotional content.
+- Added a guided path to Android/Motorola settings when unattended recovery needs permission.
+- Preserved the manually verified FortiGate login adapter, encrypted multi-account profiles, and conservative no-login-on-unknown-state behavior.
+
+
 ## 2.1.0 beta — profile management and onboarding
 
 - Added multiple trusted Wi-Fi access points with exact SSID/BSSID matching and friendly labels.

@@ -1,6 +1,6 @@
 # How Rejoin works
 
-This is the engineering reference for Rejoin 2.1 beta. User-facing setup instructions are in the [README](../README.md).
+This is the engineering reference for Rejoin 2.2 beta. User-facing setup instructions are in the [README](../README.md).
 
 ## Wi-Fi identity
 
@@ -30,9 +30,11 @@ Uncertain connectivity never authorizes an unattended login. Only an explicit us
 
 ## Background scheduling
 
-`RecoveryScheduler` requests Android-managed one-shot work with `JobScheduler` and listens for Wi-Fi availability through a `PendingIntent` callback. Jobs use their assigned `Network` when available. There is no permanent foreground service or tight polling loop.
+`RecoveryScheduler` maintains one persistent periodic `JobScheduler` job (ID 417) with a Wi-Fi network constraint and an optional separate one-shot Wi-Fi-arrival job (ID 418). The periodic job belongs to Android and remains scheduled even if the Rejoin process is killed; workers no longer need to schedule another job from `jobFinished`. Jobs use their assigned `Network` when available. There is no permanent foreground service or tight polling loop.
 
-Balanced asks for roughly 30-minute maintenance checks after healthy results; Responsive is roughly 15 minutes. Android can defer work, especially during Doze. The upstream FortiGate session can expire without a Wi-Fi link event, which is why a backup check is still necessary.
+Balanced requests a 30-minute periodic interval; Responsive requests 15 minutes. These values are not precise deadlines. Android can defer work, especially during Doze, and Motorola may further restrict apps. The upstream FortiGate session can expire without a Wi-Fi link event, which is why a periodic verification remains necessary. `BackgroundHealth` reports the most recent OS-launched check and restrictions that could prevent it; the user may choose to adjust battery/background-location settings.
+
+The Wi-Fi PendingIntent callback reports *network availability*, not silent captive-portal expiry. It must not be described as a push notification from the campus firewall.
 
 ## Security boundary
 
