@@ -12,4 +12,4 @@ Before submitting changes:
 - Keep passwords, cookies, session tokens and personal identifiers out of logs, issue reports and screenshots.
 - Avoid unnecessary foreground services, tight polling and battery-optimization bypasses.
 
-See [Security](SECURITY.md). Public contribution and licensing arrangements are not yet finalized.
+See [Security](SECURITY.md).

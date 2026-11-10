@@ -1,6 +1,6 @@
 package com.eithonx.rejoin
 
-internal const val RELEASE_REPO = "EithonX/captive"
+internal const val RELEASE_REPO = "EithonX/rejoin"
 internal const val RELEASES_PAGE = "https://github.com/$RELEASE_REPO/releases"
 internal const val UPDATE_METADATA = "rejoin-update.json"
 internal const val UPDATE_APK = "Rejoin.apk"

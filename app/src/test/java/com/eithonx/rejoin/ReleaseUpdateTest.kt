@@ -13,7 +13,7 @@ class ReleaseUpdateTest {
     fun buildsUrlsOnlyForValidReleaseTags() {
         val update = ReleaseUpdate.parse("v2.4.0-rc1", 19, 23, 1_000_000, digest)!!
         assertEquals("2.4.0-rc1", update.version)
-        assertEquals("https://github.com/EithonX/captive/releases/download/v2.4.0-rc1/Rejoin.apk", update.apkUrl)
+        assertEquals("https://github.com/EithonX/rejoin/releases/download/v2.4.0-rc1/Rejoin.apk", update.apkUrl)
         assertNull(ReleaseUpdate.parse("v2.4.0/../other", 19, 23, 1_000_000, digest))
     }
 
