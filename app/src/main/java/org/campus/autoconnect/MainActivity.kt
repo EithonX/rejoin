@@ -108,7 +108,12 @@ class MainActivity : Activity() {
         description.setLineSpacing(RejoinUi.dp(this, 3).toFloat(), 1f)
         RejoinUi.add(status, description, 9)
 
-        RejoinUi.add(status, RejoinUi.rule(this), 24)
+        val heroSeparator = View(this).apply {
+            setBackgroundColor(android.graphics.Color.rgb(63, 115, 96))
+        }
+        status.addView(heroSeparator, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, RejoinUi.dp(this, 1)
+        ).apply { topMargin = RejoinUi.dp(this@MainActivity, 23) })
         val row = RejoinUi.row(this)
         row.addView(RejoinUi.icon(this, R.drawable.ic_wifi, 21, RejoinUi.mint))
         val networkInfo = RejoinUi.column(this)
@@ -263,8 +268,6 @@ class MainActivity : Activity() {
         val profiles = TrustedNetworks.all(this)
         val active = WifiProbe.current(this)?.let { TrustedNetworks.find(this, it) }
         val account = active?.let { CredentialVault.hasLoginFor(this, it) } ?: false
-        val configured = profiles.any { CredentialVault.hasLoginFor(this, it) } &&
-            prefs.getBoolean("http_opt_in", false)
         wifiName.text = active?.label ?: if (profiles.isNotEmpty())
             "Away from saved Wi-Fi" else "No Wi-Fi saved"
         savedLogin.text = when {
