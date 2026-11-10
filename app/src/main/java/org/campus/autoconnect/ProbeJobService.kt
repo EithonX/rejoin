@@ -6,46 +6,62 @@ import android.content.Context
 import android.os.Build
 
 /**
- * Runs once, exits, and asks Android for the next check. No always-on process,
- * wake lock, exact alarm, WebView, or foreground service.
+ * Short Wi-Fi-constrained probe. Jobs persist in Android JobScheduler after
+ * this process exits. Periodic job 417 is never rearmed from inside its worker.
+ * This avoids the old race where recovery silently stopped after a few hours.
  */
 class ProbeJobService : JobService() {
-    @Volatile private var interrupted = false
+    @Volatile private var stopping = false
     @Volatile private var worker: Thread? = null
 
     override fun onStartJob(params: JobParameters): Boolean {
         if (!RecoveryPrefs.enabled(this)) return false
-        interrupted = false
+        stopping = false
+        val p = getSharedPreferences("profile", Context.MODE_PRIVATE)
+        val launched = System.currentTimeMillis()
+        p.edit()
+            .putLong("background_last_started", launched)
+            .putString("background_state", "checking")
+            .putInt("background_job_id", params.jobId)
+            .apply()
         val thread = Thread {
-            val result = try {
-                val selected = if (Build.VERSION.SDK_INT >= 28) params.network else null
-                SessionEngine.run(applicationContext, requiredNetwork = selected)
-            } catch (_: Exception) { "Background check failed without login" }
-            if (!interrupted) {
-                jobFinished(params, false)
-                if (RecoveryPrefs.enabled(applicationContext))
-                    RecoveryScheduler.scheduleAfter(applicationContext, result)
+            var result = "Check was interrupted"
+            try {
+                val network = if (Build.VERSION.SDK_INT >= 28) params.network else null
+                result = SessionEngine.run(applicationContext, requiredNetwork = network)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            } catch (e: Exception) {
+                result = "Background check couldn't finish (" + e.javaClass.simpleName + ")"
+            } finally {
+                val finished = System.currentTimeMillis()
+                getSharedPreferences("profile", Context.MODE_PRIVATE).edit()
+                    .putLong("background_last_finished", finished)
+                    .putString("background_last_result", result.take(220))
+                    .putString("background_state", if (stopping) "interrupted" else "finished")
+                    .apply()
+                if (!stopping) {
+                    // The periodic schedule is maintained by the OS, not our thread.
+                    jobFinished(params, false)
+                }
             }
         }
-        thread.name = "Rejoin-maintenance"
         worker = thread
+        thread.name = "Rejoin-background-check"
         thread.start()
         return true
     }
 
     override fun onStopJob(params: JobParameters): Boolean {
-        interrupted = true
+        stopping = true
         worker?.interrupt()
         worker = null
-        if (RecoveryPrefs.enabled(this))
-            RecoveryScheduler.schedule(this, 20L * 60_000L)
+        getSharedPreferences("profile", Context.MODE_PRIVATE).edit()
+            .putString("background_state", "stopped by Android")
+            .putLong("background_last_stopped", System.currentTimeMillis())
+            .apply()
+        // Periodic job remains in the OS scheduler. Event-triggered attempts
+        // can use the next periodic check; don't retry aggressively.
         return false
-    }
-
-    // Compatibility during migration from the previous UI.
-    companion object {
-        fun enabled(context: Context): Boolean = RecoveryScheduler.active(context)
-        fun schedule(context: Context): Boolean = RecoveryScheduler.schedule(context, 30_000L)
-        fun cancel(context: Context) = RecoveryScheduler.disable(context)
     }
 }
