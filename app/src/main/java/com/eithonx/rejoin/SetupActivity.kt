@@ -2,20 +2,42 @@ package com.eithonx.rejoin
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 
 class SetupActivity : RejoinActivity() {
+    private data class Stage(val step: SetupFlow.Step, val hasLogin: Boolean)
+
     private val prefs by lazy { getSharedPreferences("profile", MODE_PRIVATE) }
     private var revision by mutableIntStateOf(0)
 
@@ -24,26 +46,77 @@ class SetupActivity : RejoinActivity() {
         val profiles = remember(revision) { TrustedNetworks.all(this) }
         val hasLogin = remember(revision) { CredentialVault.hasCredentials(this) }
         val step = SetupFlow.next(profiles.isNotEmpty(), hasLogin, prefs.getBoolean("http_opt_in", false))
-        Page("Set up Rejoin") {
-            Text("Step ${step.ordinal + 1} of 3", style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary)
-            LinearProgressIndicator(progress = { (step.ordinal + 1) / 3f }, Modifier.fillMaxWidth())
-            when (step) {
-                SetupFlow.Step.WIFI -> WifiStep()
-                SetupFlow.Step.LOGIN -> {
-                    ScreenIntro(if (hasLogin) "Allow sign-in" else "Save your login",
-                        if (hasLogin) "Choose whether Rejoin can use your saved login."
-                        else "Enter the username and password you use on the Wi-Fi sign-in page.")
-                    LoginForm(consentOnly = hasLogin) {
-                        ActivityHistory.record(this, if (hasLogin) "Sign-in permission saved" else "Login saved")
-                        revision++
+        val scroll = rememberScrollState()
+        LaunchedEffect(step) { scroll.scrollTo(0) }
+        BackHandler(onBack = ::deferSetup)
+        RejoinPage("Set up Rejoin", onBack = ::deferSetup, scroll = scroll) {
+            SetupProgress(step)
+            AnimatedContent(
+                targetState = Stage(step, hasLogin),
+                contentKey = { it.step },
+                transitionSpec = {
+                    (fadeIn(tween(200, delayMillis = 70)) +
+                        slideInVertically(tween(240)) { it / 18 }) togetherWith fadeOut(tween(100))
+                },
+                label = "Setup step"
+            ) { current ->
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+                    if (!keyboardVisible) SetupArtwork(current.step)
+                    when (current.step) {
+                        SetupFlow.Step.WIFI -> WifiStep()
+                        SetupFlow.Step.LOGIN -> {
+                            ScreenIntro(if (current.hasLogin) "Allow sign-in" else "Save your login",
+                                if (current.hasLogin) "Choose whether Rejoin can use your saved login."
+                                else "Use the details from your Wi-Fi sign-in page.")
+                            LoginForm(consentOnly = current.hasLogin) {
+                                ActivityHistory.record(this@SetupActivity, if (current.hasLogin) "Sign-in permission saved" else "Login saved")
+                                revision++
+                            }
+                        }
+                        SetupFlow.Step.READY -> ReadyStep(profiles)
                     }
                 }
-                SetupFlow.Step.READY -> ReadyStep(profiles)
             }
-            if (step != SetupFlow.Step.READY) PageButton("Not now", filled = false) {
-                prefs.edit().putBoolean("onboarding_deferred", true).apply()
-                finish()
+            if (step != SetupFlow.Step.READY) PageButton("Not now", filled = false, action = ::deferSetup)
+        }
+    }
+
+    @Composable
+    private fun SetupProgress(step: SetupFlow.Step) {
+        val colors = MaterialTheme.colorScheme
+        val label = when (step) {
+            SetupFlow.Step.WIFI -> "Wi-Fi"
+            SetupFlow.Step.LOGIN -> "Login"
+            SetupFlow.Step.READY -> "Auto sign-in"
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(label, style = MaterialTheme.typography.labelLarge)
+                Text("${step.ordinal + 1} of 3", style = MaterialTheme.typography.labelLarge,
+                    color = colors.onSurfaceVariant)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                SetupFlow.Step.entries.forEach { item ->
+                    Box(Modifier.weight(1f).height(3.dp).background(
+                        if (item <= step) colors.primary else colors.outlineVariant,
+                        MaterialTheme.shapes.extraSmall
+                    ))
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun SetupArtwork(step: SetupFlow.Step) {
+        val scene = when (step) {
+            SetupFlow.Step.WIFI -> RelayScene.WAITING
+            SetupFlow.Step.LOGIN -> RelayScene.LOGIN
+            SetupFlow.Step.READY -> RelayScene.CONNECTED
+        }
+        Surface(shape = MaterialTheme.shapes.extraLarge, color = relayBackground) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                RelayArtwork(scene, Modifier.size(width = 210.dp, height = 116.dp))
             }
         }
     }
@@ -103,7 +176,7 @@ class SetupActivity : RejoinActivity() {
                 PageButton("Done", action = ::finishSetup)
             }
             else -> {
-                ScreenIntro("Turn on auto sign-in?", "Rejoin can sign in again when your Wi-Fi session expires.")
+                ScreenIntro("You’re ready to sign in", "Turn on auto sign-in to reconnect when your session expires.")
                 PageButton("Turn on auto sign-in") {
                     if (RecoveryPrefs.enable(this)) finishSetup()
                     else notice("Couldn’t start auto sign-in", "Try again or finish setup with auto sign-in off.")
@@ -114,6 +187,11 @@ class SetupActivity : RejoinActivity() {
     }
 
     private fun revisionChanged() { revision++ }
+
+    private fun deferSetup() {
+        prefs.edit().putBoolean("onboarding_deferred", true).apply()
+        finish()
+    }
 
     private fun finishSetup() {
         prefs.edit().putBoolean("onboarding_completed", true)

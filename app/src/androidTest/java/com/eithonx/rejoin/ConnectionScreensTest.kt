@@ -54,7 +54,7 @@ class ConnectionScreensTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.4f)) {
                 RejoinTheme(dark = false) {
-                    SettingsScreen(SettingsUi(1, 1, "On", "2.4.0-beta3"), onBack = {},
+                    SettingsScreen(SettingsUi(1, 1, "On", "2.4.0-beta4"), onBack = {},
                         onNetworks = {}, onLogins = { loginsOpened = true }, onAutomation = {},
                         onHelp = {}, onDeveloper = {})
                 }

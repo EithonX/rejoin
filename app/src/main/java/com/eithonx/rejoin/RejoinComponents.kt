@@ -1,11 +1,14 @@
 package com.eithonx.rejoin
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -40,12 +44,15 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RejoinPage(
     title: String,
     onBack: (() -> Unit)? = null,
+    wordmark: Boolean = false,
+    scroll: ScrollState = rememberScrollState(),
     actions: @Composable () -> Unit = {},
     content: @Composable () -> Unit
 ) {
@@ -54,7 +61,14 @@ internal fun RejoinPage(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
-                title = { Text(title, modifier = Modifier.semantics { heading() }) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (wordmark) Icon(painterResource(R.drawable.ic_rejoin_mark), null,
+                            modifier = Modifier.size(25.dp), tint = MaterialTheme.colorScheme.primary)
+                        Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+                    }
+                },
                 navigationIcon = {
                     if (onBack != null) {
                         IconButton(onClick = onBack) {
@@ -66,12 +80,15 @@ internal fun RejoinPage(
             )
         }
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(), contentAlignment = Alignment.TopCenter) {
+        Box(
+            Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(),
+            contentAlignment = Alignment.TopCenter
+        ) {
             Column(
                 Modifier.widthIn(max = 560.dp).fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .verticalScroll(scroll)
+                    .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
                 content = { content() }
             )
         }
@@ -80,8 +97,8 @@ internal fun RejoinPage(
 
 @Composable
 internal fun SectionLabel(text: String) {
-    Text(text, Modifier.semantics { heading() }.padding(start = 4.dp),
-        style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(text.uppercase(Locale.ROOT), Modifier.semantics { heading() }.padding(start = 2.dp),
+        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
@@ -99,7 +116,11 @@ internal fun BodyText(text: String) {
 
 @Composable
 internal fun ListGroup(content: @Composable () -> Unit) {
-    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
         Column(Modifier.fillMaxWidth()) { content() }
     }
 }
@@ -120,6 +141,7 @@ internal fun ActionRow(title: String, detail: String? = null, icon: Int? = null,
 internal fun PageButton(text: String, filled: Boolean = true, action: () -> Unit) {
     val size = Modifier.fillMaxWidth().heightIn(min = 48.dp)
     val padding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
-    if (filled) Button(onClick = action, modifier = size, contentPadding = padding) { Text(text) }
-    else OutlinedButton(onClick = action, modifier = size, contentPadding = padding) { Text(text) }
+    val shape = MaterialTheme.shapes.medium
+    if (filled) Button(onClick = action, modifier = size, shape = shape, contentPadding = padding) { Text(text) }
+    else OutlinedButton(onClick = action, modifier = size, shape = shape, contentPadding = padding) { Text(text) }
 }

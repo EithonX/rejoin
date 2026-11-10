@@ -26,4 +26,4 @@ Use JDK 17 and Android SDK 35. On Windows, use `gradlew.bat`.
 
 Download **Rejoin-debug-apk** from a successful Actions run. Beta 3 uses the application ID `com.eithonx.rejoin` and installs separately from earlier betas. Set up your Wi-Fi and login again in the new app.
 
-[Architecture](docs/architecture.md) · [Windows signing and release builds](docs/releasing.md) · [Changelog](CHANGELOG.md) · [EithonX](https://github.com/EithonX)
+[Architecture](docs/architecture.md) · [Releases](https://github.com/EithonX/captive/releases) · [Changelog](CHANGELOG.md) · [EithonX](https://github.com/EithonX)

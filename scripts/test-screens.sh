@@ -12,7 +12,7 @@ adb shell am instrument -w -r "$package.test/androidx.test.runner.AndroidJUnitRu
   tee "$output/results.txt"
 grep -Eq '^OK \([1-9][0-9]* tests?\)' "$output/results.txt"
 
-for name in home-dark settings-large-text; do
+for name in home-dark settings-large-text setup-first-step; do
   adb exec-out run-as "$package" cat "files/$name.png" > "$output/$name.png"
   test -s "$output/$name.png"
 done

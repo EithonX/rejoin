@@ -1,13 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 280" width="1100" height="280" role="img" aria-labelledby="title description">
   <title id="title">Rejoin</title>
   <desc id="description">Automatic Wi-Fi sign-in for Android</desc>
-  <rect width="1100" height="280" rx="30" fill="#15151c"/>
-  <rect x="73" y="71" width="138" height="138" rx="36" fill="#4f50a5"/>
-  <path transform="translate(103.6 101.6) scale(2.4)"
-    d="M13.1 22.5l-2.2 2.2c-2.3 2.3-5.9 2.3-8.1 0s-2.2-5.8 0-8.1l4.7-4.7c2.2-2.2 5.8-2.2 8.1 0 M18.9 9.5l2.2-2.2c2.3-2.3 5.9-2.3 8.1 0s2.2 5.8 0 8.1l-4.7 4.7c-2.2 2.2-5.8 2.2-8.1 0 M11.7 20.3l8.6-8.6"
-    fill="none" stroke="#fff" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/>
-  <g font-family="system-ui, -apple-system, Segoe UI, sans-serif">
-    <text x="260" y="137" fill="#e9e7f0" font-size="82" font-weight="700" letter-spacing="-3">Rejoin</text>
-    <text x="264" y="192" fill="#cac7d5" font-size="30">Automatic Wi-Fi sign-in for Android</text>
+  <defs>
+    <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.15" fill="#64788d" opacity=".55"/>
+    </pattern>
+  </defs>
+  <rect width="1100" height="280" rx="20" fill="#171b20"/>
+  <rect x="719" y="29" width="352" height="222" rx="14" fill="#263444"/>
+  <rect x="735" y="45" width="320" height="190" rx="9" fill="url(#grid)"/>
+  <g transform="translate(761 50) scale(1.48)">
+    <path d="M51 95C77 109 102 106 99 86S113 67 135 80" fill="none" stroke="#202c3a" stroke-width="8"/>
+    <path d="M51 95C77 109 102 106 99 86S113 67 135 80" fill="none" stroke="#f3b686" stroke-width="3.4" stroke-linecap="round"/>
+    <g transform="rotate(-9 45 78)">
+      <rect x="17" y="70" width="65" height="29" rx="9" fill="#202c3a"/>
+      <rect x="15" y="66" width="64" height="28" rx="8" fill="#819ab4"/>
+      <rect x="15" y="62" width="64" height="23" rx="8" fill="#c5dcf2"/>
+      <path d="M29 62V47M66 62V47" stroke="#c5dcf2" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="38" cy="75" r="2.5" fill="#f3b686"/>
+      <circle cx="59" cy="75" r="1.8" fill="#202c3a"/>
+      <circle cx="66" cy="75" r="1.8" fill="#202c3a"/>
+    </g>
+    <g transform="rotate(10 135 56)">
+      <rect x="120" y="27" width="38" height="64" rx="9" fill="#202c3a"/>
+      <rect x="118" y="24" width="38" height="64" rx="9" fill="#819ab4"/>
+      <rect x="117" y="22" width="36" height="62" rx="9" fill="#e9f0f1"/>
+      <rect x="121" y="29" width="28" height="44" rx="5" fill="#c5dcf2"/>
+      <circle cx="135" cy="51" r="8.8" fill="#202c3a"/>
+      <path d="M131 51L134 54L139 48" fill="none" stroke="#e9f0f1" stroke-width="1.8" stroke-linecap="round"/>
+    </g>
+    <path d="M165 37L167 41L171 43L167 45L165 49L163 45L159 43L163 41Z" fill="#f3b686"/>
+    <path d="M89 21L90 24L93 25L90 26L89 29L88 26L85 25L88 24Z" fill="#c5dcf2"/>
   </g>
+  <g transform="translate(66 59) scale(1.15)" fill="none" stroke="#f8f0e3" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5.8 17.6V12.2Q5.8 7.5 10.6 7.5H16.7Q18.2 7.5 19.4 8.7L21.1 10.4M26.2 14.4V19.8Q26.2 24.5 21.4 24.5H15.3Q13.8 24.5 12.6 23.3L10.9 21.6M11.9 20.1L20.1 11.9"/>
+    <path d="M16 12.8L19.2 16L16 19.2L12.8 16Z" stroke="none" fill="#f3b686"/>
+  </g>
+  <text x="67" y="164" fill="#f8f0e3" font-family="Georgia, serif" font-size="84" letter-spacing="-4">Rejoin</text>
+  <text x="72" y="213" fill="#cad5df" font-family="system-ui, sans-serif" font-size="25">Automatic Wi-Fi sign-in for Android</text>
 </svg>

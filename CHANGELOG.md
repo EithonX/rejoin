@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.0-beta4
+
+- Illustrate connection states and animate setup between saved Wi-Fi, login and auto sign-in.
+- Refine the launcher mark, typography and screen shapes.
+- Build signed APKs and publish versioned releases from GitHub Actions.
+
 ## 2.4.0-beta3
 
 - Rebuild the interface with Jetpack Compose Material 3 and add native screen tests.
