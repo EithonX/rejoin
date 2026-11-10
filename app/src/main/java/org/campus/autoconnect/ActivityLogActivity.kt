@@ -4,82 +4,73 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import java.text.DateFormat
 import java.util.Date
 
-/** Local, privacy-safe activity history with no passwords or session tokens. */
+/** A private activity trail, not an analytics dashboard. */
 class ActivityLogActivity : Activity() {
-    private lateinit var list: LinearLayout
-
+    private lateinit var events: LinearLayout
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val outer = RejoinUi.column(this).apply { setBackgroundColor(RejoinUi.canvas) }
-        val scroll = ScrollView(this).apply { setBackgroundColor(RejoinUi.canvas) }
-        val body = RejoinUi.column(this).apply {
-            setPadding(RejoinUi.dp(this@ActivityLogActivity, 23), RejoinUi.dp(this@ActivityLogActivity, 24),
-                RejoinUi.dp(this@ActivityLogActivity, 23), RejoinUi.dp(this@ActivityLogActivity, 30))
+        val scroller = ScrollView(this).apply {
+            setBackgroundColor(RejoinUi.canvas)
         }
-        scroll.addView(body)
-        outer.addView(scroll, LinearLayout.LayoutParams(-1, -1))
-        setContentView(outer)
-        RejoinUi.applySystemBars(this, outer)
-
-        val header = RejoinUi.row(this)
-        header.addView(RejoinUi.smallAction(this, "←") { finish() },
-            LinearLayout.LayoutParams(RejoinUi.dp(this, 38), -2))
-        header.addView(RejoinUi.label(this, "Activity", 27f, RejoinUi.ink, true),
+        val body = RejoinUi.column(this).apply {
+            val side = RejoinUi.dp(this@ActivityLogActivity, 24)
+            setPadding(side, RejoinUi.dp(this@ActivityLogActivity, 24),
+                side, side)
+        }
+        scroller.addView(body)
+        setContentView(scroller)
+        RejoinUi.applySystemBars(this, scroller)
+        RejoinUi.header(this, body, "Activity")
+        val top = RejoinUi.row(this)
+        top.addView(RejoinUi.label(this, "ON THIS DEVICE", 11f, RejoinUi.muted, true)
+            .apply { letterSpacing = .13f },
             LinearLayout.LayoutParams(0, -2, 1f))
-        RejoinUi.add(body, header)
-        RejoinUi.add(body, RejoinUi.label(this,
-            "A small record of what Rejoin has done on this phone.",
-            13f, RejoinUi.muted), 8)
-
-        val panel = RejoinUi.inset(this)
-        RejoinUi.add(body, panel, 28)
-        val heading = RejoinUi.row(this)
-        heading.addView(RejoinUi.label(this, "Recent events", 16f, RejoinUi.ink, true),
-            LinearLayout.LayoutParams(0, -2, 1f))
-        heading.addView(RejoinUi.smallAction(this, "Clear") {
-            AlertDialog.Builder(this).setTitle("Clear activity history?")
-                .setMessage("This only clears local connection event summaries. Your account settings stay unchanged.")
+        top.addView(RejoinUi.smallAction(this, "Clear") {
+            AlertDialog.Builder(this)
+                .setTitle("Clear activity?")
+                .setMessage("This won't change your saved networks or logins.")
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Clear") { _, _ ->
                     ActivityHistory.clear(this)
                     refresh()
                 }.show()
         })
-        RejoinUi.add(panel, heading)
-        list = RejoinUi.column(this)
-        RejoinUi.add(panel, list, 11)
-
-        RejoinUi.add(body, RejoinUi.label(this,
-            "No accounts, passwords or FortiGate tokens are kept in this log.",
-            12f, RejoinUi.muted), 19)
+        RejoinUi.add(body, top, 25)
+        events = RejoinUi.column(this)
+        RejoinUi.add(body, events, 9)
         refresh()
     }
 
     private fun refresh() {
-        list.removeAllViews()
-        val entries = ActivityHistory.latest(this, 24)
-        if (entries.isEmpty()) {
-            RejoinUi.add(list, RejoinUi.label(this,
-                "Nothing to report yet. You're all set.", 14f, RejoinUi.muted), 20, 20)
+        if (!::events.isInitialized) return
+        events.removeAllViews()
+        val recent = ActivityHistory.latest(this, 24)
+        if (recent.isEmpty()) {
+            RejoinUi.add(events,
+                RejoinUi.label(this, "No events yet.", 16f, RejoinUi.ink, true), 32)
+            RejoinUi.add(events,
+                RejoinUi.label(this, "When Rejoin reconnects, you'll see it here.",
+                    13f, RejoinUi.muted), 10)
+            return
         }
-        for ((i, entry) in entries.withIndex()) {
-            if (i > 0) RejoinUi.add(list, RejoinUi.rule(this), 14)
+        recent.forEachIndexed { index, event ->
+            if (index > 0) RejoinUi.add(events, RejoinUi.rule(this), 15)
             val row = RejoinUi.row(this)
-            val mark = RejoinUi.label(this, "●", 12f, RejoinUi.jade)
-            row.addView(mark, LinearLayout.LayoutParams(RejoinUi.dp(this, 22), -2))
-            val contents = RejoinUi.column(this)
-            row.addView(contents, LinearLayout.LayoutParams(0, -2, 1f))
-            RejoinUi.add(contents, RejoinUi.label(this, entry.event, 14f, RejoinUi.ink, true))
-            RejoinUi.add(contents, RejoinUi.label(this,
+            row.setPadding(0, RejoinUi.dp(this, 17), 0, RejoinUi.dp(this, 2))
+            row.addView(RejoinUi.label(this, "●", 10f, RejoinUi.jade),
+                LinearLayout.LayoutParams(RejoinUi.dp(this, 25), -2))
+            val copy = RejoinUi.column(this)
+            row.addView(copy, LinearLayout.LayoutParams(0, -2, 1f))
+            RejoinUi.add(copy, RejoinUi.label(this, event.event, 15f, RejoinUi.ink, true))
+            RejoinUi.add(copy, RejoinUi.label(this,
                 DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-                    .format(Date(entry.time)), 12f, RejoinUi.muted), 6)
-            RejoinUi.add(list, row, 14)
+                    .format(Date(event.time)), 12f, RejoinUi.muted), 7)
+            events.addView(row)
         }
     }
 }
