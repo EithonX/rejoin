@@ -1,14 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="rejoin_canvas">#11151E</color>
-    <style name="Theme.Rejoin" parent="@android:style/Theme.Material.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#BDC9FF</item>
-        <item name="android:statusBarColor">@color/rejoin_canvas</item>
-        <item name="android:navigationBarColor">@color/rejoin_canvas</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:windowBackground">@color/rejoin_canvas</item>
+    <color name="rejoin_launcher_background">#4F50A5</color>
+    <style name="Theme.Rejoin" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FBFAFE</item>
         <item name="android:forceDarkAllowed">false</item>
     </style>
 </resources>

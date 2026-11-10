@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.0-beta3
+
+- Rebuild the interface with Jetpack Compose Material 3 and add native screen tests.
+- Move the app to `com.eithonx.rejoin` and replace the launcher icon.
+- Add a manual signed APK workflow and Windows keystore instructions.
+
 ## 2.4.0-beta2
 
 - Separate internet status from auto-reconnect readiness and show the relevant action on Home.

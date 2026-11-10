@@ -1,29 +1,29 @@
 <p align="center">
-  <img src="docs/assets/rejoin.svg" alt="Rejoin for Android. Signs you back in when campus Wi-Fi expires." width="100%">
+  <img src="docs/assets/rejoin.svg" alt="Rejoin for Android. Automatic Wi-Fi sign-in." width="100%">
 </p>
 
 <p align="center">
   <a href="https://github.com/EithonX/captive/actions/workflows/build-debug-apk.yml"><img src="docs/assets/get-builds.svg" alt="Get beta builds from GitHub Actions" width="166" height="42"></a>
 </p>
 
-## Use Rejoin
+## Get started
 
-1. Connect to your campus Wi-Fi and save it in Rejoin.
-2. Save the campus login you already use.
-3. Turn on **Auto-reconnect** if you want Rejoin to sign you back in automatically. You can also reconnect manually from Home.
+1. Connect to Wi-Fi and save the network in Rejoin.
+2. Enter the login you use on its sign-in page.
+3. Turn on **Auto sign-in** if you want Rejoin to sign you back in when your session expires.
 
-One saved Wi-Fi and one login are enough to start. To use a different account on another router, open **Settings → Saved Wi-Fi**, select the network and choose **Change login**. Rejoin matches the specific saved access point, even if another router broadcasts the same name.
+Manage networks and logins in **Settings**. One default login can cover several networks, or you can assign a different login to each one.
 
-**Private beta · Android 8.0 or newer.** The sign-in adapter is built for Chandigarh University’s FortiGate portal. Credentials are encrypted on the device. The campus portal uses unencrypted HTTP, so your password can be exposed during sign-in. Rejoin asks before using it. [Privacy](PRIVACY.md) · [Security](SECURITY.md)
+**Private beta · Android 8.0 or newer.** The current adapter supports Chandigarh University’s FortiGate portal. Rejoin encrypts saved passwords on your phone and asks permission before using the portal’s unencrypted HTTP sign-in. [Privacy](PRIVACY.md) · [Security](SECURITY.md)
 
 ## Build
 
-Use JDK 17 and Android SDK 35. Run `gradlew.bat` in place of `./gradlew` on Windows.
+Use JDK 17 and Android SDK 35. On Windows, use `gradlew.bat`.
 
 ```sh
 ./gradlew :app:testDebugUnitTest :app:assembleDebug
 ```
 
-For a prebuilt APK, open a successful Actions run and download **Rejoin-debug-apk**. Debug APKs from different runs can have different signing certificates. See the [release guide](docs/releasing.md) before replacing an installed build that has saved data.
+Download **Rejoin-debug-apk** from a successful Actions run. Beta 3 uses the application ID `com.eithonx.rejoin` and installs separately from earlier betas. Set up your Wi-Fi and login again in the new app.
 
-[Architecture](docs/architecture.md) · [Release builds](docs/releasing.md) · [Changelog](CHANGELOG.md) · [EithonX](https://github.com/EithonX)
+[Architecture](docs/architecture.md) · [Windows signing and release builds](docs/releasing.md) · [Changelog](CHANGELOG.md) · [EithonX](https://github.com/EithonX)

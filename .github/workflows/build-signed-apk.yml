@@ -1,0 +1,51 @@
+name: Build signed Rejoin APK
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-35 build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Sign and verify APK
+        env:
+          REJOIN_KEYSTORE_BASE64: ${{ secrets.REJOIN_KEYSTORE_BASE64 }}
+          REJOIN_KEYSTORE_PASSWORD: ${{ secrets.REJOIN_KEYSTORE_PASSWORD }}
+          REJOIN_KEY_ALIAS: ${{ secrets.REJOIN_KEY_ALIAS }}
+          REJOIN_KEY_PASSWORD: ${{ secrets.REJOIN_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          : "${REJOIN_KEYSTORE_BASE64:?Set REJOIN_KEYSTORE_BASE64 in the release environment}"
+          : "${REJOIN_KEYSTORE_PASSWORD:?Set REJOIN_KEYSTORE_PASSWORD in the release environment}"
+          : "${REJOIN_KEY_ALIAS:?Set REJOIN_KEY_ALIAS in the release environment}"
+          : "${REJOIN_KEY_PASSWORD:?Set REJOIN_KEY_PASSWORD in the release environment}"
+          umask 077
+          export REJOIN_KEYSTORE_PATH="$(mktemp "$RUNNER_TEMP/rejoin-signing.XXXXXXXX")"
+          trap 'rm -f -- "$REJOIN_KEYSTORE_PATH"' EXIT
+          printf '%s' "$REJOIN_KEYSTORE_BASE64" | base64 --decode > "$REJOIN_KEYSTORE_PATH"
+          unset REJOIN_KEYSTORE_BASE64
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs \
+            app/build/outputs/apk/release/app-release.apk
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/Rejoin.apk"
+          (cd "$RUNNER_TEMP" && sha256sum Rejoin.apk > Rejoin.apk.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rejoin-signed-apk
+          path: |
+            ${{ runner.temp }}/Rejoin.apk
+            ${{ runner.temp }}/Rejoin.apk.sha256
+          if-no-files-found: error

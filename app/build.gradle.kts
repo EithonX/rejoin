@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 val signingVariables = listOf(
@@ -17,15 +18,16 @@ if (hasReleaseSigning) {
 }
 
 android {
-    namespace = "org.campus.autoconnect"
+    namespace = "com.eithonx.rejoin"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "org.campus.autoconnect"
+        applicationId = "com.eithonx.rejoin"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "2.4.0-beta2"
+        versionCode = 17
+        versionName = "2.4.0-beta3"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     if (hasReleaseSigning) {
@@ -38,13 +40,27 @@ android {
         buildTypes.named("release") { signingConfig = config }
     }
 
+    buildFeatures { compose = true }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+}
+
+kotlin {
+    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
 }
 
 dependencies {
+    implementation(platform("androidx.compose:compose-bom:2025.05.01"))
+    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-core")
+
+    androidTestImplementation(platform("androidx.compose:compose-bom:2025.05.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("junit:junit:4.13.2")
 }
