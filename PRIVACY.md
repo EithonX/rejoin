@@ -1,13 +1,19 @@
 # Privacy
 
-Rejoin is designed as a local utility rather than a hosted service.
+Rejoin runs on your phone. It has no analytics, ads, or developer-operated account service.
 
-**Stored on your phone:** Trusted SSID/BSSID pairs and optional display names; your saved login labels and credentials (encrypted with Android Keystore); your preferred router-to-login assignments; short connection-event summaries; and scheduling state. Nothing in the interface needs your geographical coordinates, although Android may require location permission to reveal Wi-Fi identity.
+## On your phone
 
-**Network traffic:** To validate internet access Rejoin makes minimal checks against public internet endpoints, currently Cloudflare's IP-only trace endpoint. Cloudflare can observe connection metadata such as your public IP and request times. When you expressly enable or manually invoke login, your saved credentials are sent to the CU FortiGate endpoint on the selected Wi-Fi. That currently observed CU endpoint uses HTTP without TLS; Rejoin cannot guarantee confidentiality in transit.
+Rejoin keeps the Wi-Fi names and access point identifiers you save, your login and network preferences, recent connection summaries, and the state it needs to schedule checks. Saved usernames and passwords are encrypted using Android Keystore. Android may require location permission to show the connected Wi-Fi's identity. Rejoin uses that identity to check whether the connection matches a saved network.
 
-**No Rejoin cloud:** There are no analytics SDKs, advertising integrations, telemetry uploads or developer-run authentication servers.
+## Network requests
 
-**Deletion:** Remove individual accounts in Saved logins, remove router profiles in Saved Wi-Fi, or clear all saved logins in Troubleshooting. Clearing the app's data or uninstalling also removes local app data and Keystore records.
+- **Campus sign-in.** If you opt in to HTTP sign-in, Rejoin sends your saved username and password to Chandigarh University’s FortiGate portal over the selected Wi-Fi during manual and automatic sign-in. The portal uses HTTP. Someone who can intercept the traffic can read the credentials as they are sent.
+- **Connection checks.** Rejoin contacts Cloudflare to check internet access. Some captive portal checks contact Google connectivity endpoints. These requests carry standard network information such as your IP address and do not include saved credentials.
+- **Updates.** Rejoin checks GitHub Releases at most once a day when opened, and when you request a check. The request does not contain your saved Wi-Fi details or login. An APK downloads only when you choose to install an update, and Rejoin verifies it before handing it to Android.
 
-**Updates:** Rejoin checks GitHub Releases when the app opens, at most once per day, or when you ask it to check. GitHub can see standard connection metadata such as your IP address. The check sends no saved network information or login. Downloads start only when you select an update and are verified before Android asks you to install them.
+## Delete saved data
+
+Use **Settings → Saved logins** or **Settings → Saved Wi-Fi** to remove individual entries. **Settings → Troubleshooting** can clear all saved logins. Clear Rejoin’s storage in Android settings or uninstall the app to remove its local data.
+
+For privacy questions, contact [EithonX](https://github.com/EithonX).

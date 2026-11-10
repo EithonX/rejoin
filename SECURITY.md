@@ -4,7 +4,7 @@
 
 Rejoin authenticates a user's own authorized captive-portal session. The current adapter targets Chandigarh University’s FortiGate portal.
 
-**Known high-risk dependency:** The currently observed CU FortiGate login endpoint is unencrypted HTTP. Passwords are encrypted at rest on the device but **not in transit** to that endpoint. Anyone able to intercept that traffic may potentially obtain credentials. Do not suggest or implement certificate-verification bypasses.
+The current CU FortiGate endpoint uses HTTP. Rejoin encrypts saved credentials on the device. Anyone able to intercept the HTTP request can read the credentials during sign-in. Use the portal only with a Wi-Fi account you are authorized to use.
 
 Trusted Wi-Fi entries use SSID and BSSID matching to reduce accidental submission. An access point's broadcast identifiers can be spoofed; they are not a cryptographic authentication mechanism.
 
@@ -20,6 +20,6 @@ Trusted Wi-Fi entries use SSID and BSSID matching to reduce accidental submissio
 
 If you discover a vulnerability, contact [EithonX](https://github.com/EithonX) privately rather than posting sensitive details publicly. GitHub's private vulnerability reporting may also be used if the repository owner enables it. Do not submit real usernames, passwords, cookies, session tokens or unredacted device logs.
 
-## Signed APK distribution
+## Release candidates
 
-Before publishing a signed APK for public use, obtain a campus-approved TLS-protected login flow; review authentication and credential lifetimes; audit the source, exported components and dependency inventory; test on multiple Android versions; add stable release signing and a trusted update path; and review applicable institutional network policies.
+Signed release candidates are available for testing. Their release notes disclose the campus portal’s use of HTTP. A production release requires a campus-approved TLS-protected login flow and validation across supported Android versions.
