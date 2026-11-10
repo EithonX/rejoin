@@ -6,24 +6,17 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import java.text.DateFormat
-import java.util.Date
-import java.util.concurrent.Executors
 
 /**
  * Settings, not a sales page: short rows, clear outcomes, advanced tests hidden.
  */
 class SettingsActivity : Activity() {
-    private val worker = Executors.newSingleThreadExecutor()
     private lateinit var networksRow: LinearLayout
     private lateinit var accountsRow: LinearLayout
     private lateinit var protectionRow: LinearLayout
-    private lateinit var advancedBody: LinearLayout
-    private lateinit var advancedToggle: TextView
     private lateinit var setupCaption: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,39 +66,13 @@ class SettingsActivity : Activity() {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/EithonX")))
         })
 
-        RejoinUi.section(body, "Troubleshooting", 29)
-        val tools = RejoinUi.inset(this)
-        RejoinUi.add(body, tools, 12)
-        advancedToggle = RejoinUi.smallAction(this, "Troubleshooting  +") {
-            advancedBody.visibility =
-                if (advancedBody.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-            advancedToggle.text = if (advancedBody.visibility == View.VISIBLE)
-                "Troubleshooting  −" else "Troubleshooting  +"
-        }
-        RejoinUi.add(tools, advancedToggle)
-        advancedBody = RejoinUi.column(this).apply { visibility = View.GONE }
-        RejoinUi.add(tools, advancedBody, 8)
-        RejoinUi.add(advancedBody, RejoinUi.label(this,
-            "Only use these controls when diagnosing a connection problem.",
-            12f, RejoinUi.muted), 2)
-        RejoinUi.add(advancedBody, RejoinUi.action(this, "Check internet", false) {
-            runTest("check")
-        }, 14)
-        RejoinUi.add(advancedBody, RejoinUi.action(this, "Try one sign-in", false) {
-            confirmLogin()
-        }, 9)
-        RejoinUi.add(advancedBody, RejoinUi.action(this, "Open campus sign-in page", false) {
-            if (!LiveSessionTest.selectedWifiMatches(this)) {
-                message("Connect to saved Wi-Fi first", "The campus sign-in page is only for your saved network.")
-            } else startActivity(Intent(Intent.ACTION_VIEW,
-                Uri.parse("http://172.16.2.1:1000/login?")))
-        }, 9)
-        RejoinUi.add(advancedBody, RejoinUi.action(this, "Log out shared session", false) {
-            confirmLogout()
-        }, 9)
-        RejoinUi.add(advancedBody, RejoinUi.action(this, "Erase all saved logins", false) {
-            confirmErase()
-        }, 9)
+        RejoinUi.section(body, "Support", 29)
+        val support = RejoinUi.inset(this)
+        RejoinUi.add(body, support, 12)
+        support.addView(RejoinUi.navRow(this, "Troubleshooting",
+            "Connection checks and advanced options") {
+            startActivity(Intent(this, DiagnosticsActivity::class.java))
+        })
 
         RejoinUi.add(body, RejoinUi.label(this,
             "Rejoin 2.3 beta   ·   Made by EithonX", 12f, RejoinUi.muted), 32)
@@ -151,64 +118,10 @@ class SettingsActivity : Activity() {
         })
     }
 
-    private fun confirmLogin() {
-        AlertDialog.Builder(this).setTitle("Try one campus login?")
-            .setMessage("This uses the login saved for your current Wi-Fi. The campus portal's HTTP connection isn't encrypted.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Sign in") { _, _ -> runTest("login") }.show()
-    }
-
-    private fun confirmLogout() {
-        AlertDialog.Builder(this).setTitle("Log out the shared connection?")
-            .setMessage("Other devices on the same router may lose access until someone signs back in.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Log out") { _, _ ->
-                getSharedPreferences("profile", MODE_PRIVATE).edit()
-                    .putLong("manual_test_until",
-                        System.currentTimeMillis() + 10 * 60_000L).commit()
-                runTest("logout")
-            }.show()
-    }
-
-    private fun confirmErase() {
-        AlertDialog.Builder(this).setTitle("Erase saved passwords?")
-            .setMessage("This turns off automatic recovery. Saved Wi-Fi networks will remain.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Erase") { _, _ ->
-                RecoveryScheduler.disable(this)
-                CredentialVault.clear(this)
-                ActivityHistory.record(this, "All logins erased")
-                refresh()
-            }.show()
-    }
-
-    private fun runTest(kind: String) {
-        worker.execute {
-            val result = try {
-                when (kind) {
-                    "login" -> SessionEngine.run(applicationContext, userInitiated = true,
-                        explicitlyLoggedOut = true)
-                    "logout" -> LiveSessionTest.logout(applicationContext)
-                    else -> InternetVerifier.check(applicationContext).let {
-                        it.state.name + ": " + it.details
-                    }
-                }
-            } catch (e: Exception) { "Test failed (" + e.javaClass.simpleName + ")" }
-            runOnUiThread { message("Connection test", result) }
-        }
-    }
-
-    private fun message(title: String, body: String) =
-        AlertDialog.Builder(this).setTitle(title).setMessage(body)
-            .setPositiveButton("OK", null).show()
-
     override fun onResume() {
         super.onResume()
         if (::networksRow.isInitialized) refresh()
     }
 
-    override fun onDestroy() {
-        worker.shutdownNow()
-        super.onDestroy()
-    }
+
 }
