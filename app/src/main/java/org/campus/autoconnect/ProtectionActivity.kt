@@ -26,6 +26,7 @@ class ProtectionActivity : Activity() {
     private lateinit var secondary: TextView
     private lateinit var lastRun: TextView
     private lateinit var help: TextView
+    private lateinit var frequency: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,8 +72,11 @@ class ProtectionActivity : Activity() {
         RejoinUi.add(info, RejoinUi.label(this,
             "Android manages the timing. Rejoin doesn't run a continuous connection loop.",
             12f, RejoinUi.muted), 10)
+        RejoinUi.add(info, RejoinUi.rule(this), 17)
+        frequency = RejoinUi.column(this)
+        RejoinUi.add(info, frequency, 6)
         help = RejoinUi.smallAction(this, "Review background access") { backgroundHelp() }
-        RejoinUi.add(info, help, 11)
+        RejoinUi.add(info, help, 9)
         render()
     }
 
@@ -101,18 +105,21 @@ class ProtectionActivity : Activity() {
             enabled -> RejoinUi.jade
             else -> RejoinUi.muted
         })
+        val criticalRestriction = !health.backgroundLocation || health.restricted || !health.hasJob
         headline.text = when {
             !ready -> "Finish setting up Rejoin."
-            !enabled -> "Stay connected without checking."
+            !enabled -> "Let Rejoin take care of it."
+            health.level == BackgroundHealth.Level.NEEDS_ACTION && criticalRestriction ->
+                "A permission needs attention."
             health.level == BackgroundHealth.Level.NEEDS_ACTION ->
-                "One setting needs attention."
-            else -> "Rejoin is looking after your Wi-Fi."
+                "Your phone may delay checks."
+            else -> "Auto-reconnect is on."
         }
         description.text = when {
             !ready -> "Save your Wi-Fi and campus login once to get started."
-            !enabled -> "When your campus asks you to sign in again, Rejoin can restore access."
+            !enabled -> "When campus sign-in expires, Rejoin can restore your connection."
             health.level == BackgroundHealth.Level.NEEDS_ACTION -> health.description
-            else -> "Automatic checks are on. Rejoin stays quiet while you're connected."
+            else -> "Rejoin checks quietly when Android allows, without running constantly."
         }
 
         action.visibility = if (!enabled || !ready) View.VISIBLE else View.GONE
@@ -122,7 +129,13 @@ class ProtectionActivity : Activity() {
         }
         secondary.visibility = if (enabled) View.VISIBLE else View.GONE
         help.text = if (health.level == BackgroundHealth.Level.NEEDS_ACTION)
-            "Fix background access  →" else "Background access  →"
+            "Review access" else "Background access"
+        frequency.removeAllViews()
+        val modeName = when (RecoveryPrefs.mode(this)) {
+            RecoveryPolicy.Mode.BALANCED -> "Balanced"
+            RecoveryPolicy.Mode.RESPONSIVE -> "Responsive"
+        }
+        frequency.addView(RejoinUi.navRow(this, "Check frequency", modeName) { choosePace() })
         val previous = health.lastRun
         lastRun.text = if (previous > 0L)
             "Last background check · " +
@@ -163,6 +176,21 @@ class ProtectionActivity : Activity() {
                 ActivityHistory.record(this, "Auto-reconnect paused")
                 render()
             }.show()
+    }
+
+    private fun choosePace() {
+        val options = arrayOf("Balanced · fewer checks", "Responsive · checks more often")
+        val choice = if (RecoveryPrefs.mode(this) == RecoveryPolicy.Mode.BALANCED) 0 else 1
+        AlertDialog.Builder(this).setTitle("Check frequency")
+            .setSingleChoiceItems(options, choice) { dialog, selected ->
+                val mode = if (selected == 0) "balanced" else "responsive"
+                getSharedPreferences("profile", MODE_PRIVATE).edit()
+                    .putString("recovery_mode", mode).commit()
+                if (RecoveryPrefs.enabled(this)) RecoveryScheduler.schedulePeriodic(this)
+                dialog.dismiss()
+                render()
+            }
+            .setNegativeButton("Cancel", null).show()
     }
 
     private fun backgroundHelp() {
