@@ -4,17 +4,22 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -27,11 +32,23 @@ abstract class RejoinActivity : ComponentActivity() {
         if (!hasWifiAccess()) explainWifiAccess()
     }
 
+    private val backgroundLocation =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            onWifiPermissionResult()
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Appearance.load(this)
         enableEdgeToEdge()
         setContent {
-            RejoinTheme {
+            val dark = Appearance.current.isDark(isSystemInDarkTheme())
+            LaunchedEffect(dark) {
+                val bars = if (dark) SystemBarStyle.dark(Color.TRANSPARENT)
+                    else SystemBarStyle.light(Color.TRANSPARENT, 0xFF171B20.toInt())
+                enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+            }
+            RejoinTheme(dark) {
                 Screen()
                 dialog?.invoke()
             }
@@ -92,6 +109,25 @@ abstract class RejoinActivity : ComponentActivity() {
         confirm("Allow precise location",
             "Android requires precise location permission to identify your Wi-Fi. In app settings, go to Permissions → Location.",
             "Open app settings", "Cancel", ::openAppSettings)
+    }
+
+    protected fun resolveBackgroundIssue(issue: BackgroundHealth.Issue) {
+        when (issue) {
+            BackgroundHealth.Issue.LOCATION_OFF ->
+                startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            BackgroundHealth.Issue.BACKGROUND_LOCATION -> {
+                val prefs = getSharedPreferences("profile", MODE_PRIVATE)
+                if (Build.VERSION.SDK_INT == 29 && !prefs.getBoolean("background_prompted", false)) {
+                    prefs.edit().putBoolean("background_prompted", true).apply()
+                    backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                } else openAppSettings()
+            }
+            BackgroundHealth.Issue.NO_JOB -> {
+                if (RecoveryPrefs.enable(this)) onWifiPermissionResult()
+                else notice("Couldn’t restart checks", "Try again in a moment.")
+            }
+            else -> openAppSettings()
+        }
     }
 
     protected fun openAppSettings() {

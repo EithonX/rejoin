@@ -14,7 +14,7 @@
 
 Manage networks and logins in **Settings**. One default login can cover several networks, or you can assign a different login to each one.
 
-**Private beta · Android 8.0 or newer.** The current adapter supports Chandigarh University’s FortiGate portal. Rejoin encrypts saved passwords on your phone and asks permission before using the portal’s unencrypted HTTP sign-in. [Privacy](PRIVACY.md) · [Security](SECURITY.md)
+**Android 6.0 or newer.** The universal APK supports 32-bit and 64-bit ARM and x86 devices. The current adapter supports Chandigarh University’s FortiGate portal. Rejoin encrypts saved passwords on your phone and asks permission before using the portal’s unencrypted HTTP sign-in. [Privacy](PRIVACY.md) · [Security](SECURITY.md)
 
 ## Build
 
@@ -24,6 +24,6 @@ Use JDK 17 and Android SDK 35. On Windows, use `gradlew.bat`.
 ./gradlew :app:testDebugUnitTest :app:assembleDebug
 ```
 
-Download **Rejoin-debug-apk** from a successful Actions run. Beta 3 uses the application ID `com.eithonx.rejoin` and installs separately from earlier betas. Set up your Wi-Fi and login again in the new app.
+Download **Rejoin-optimized-test-apk** from a successful Actions run for testing. The signed distribution APK is published in [Releases](https://github.com/EithonX/captive/releases). In Rejoin, open **Settings → About** to check for updates. Beta 3 uses the application ID `com.eithonx.rejoin` and installs separately from earlier betas. Set up your Wi-Fi and login again in the new app.
 
 [Architecture](docs/architecture.md) · [Releases](https://github.com/EithonX/captive/releases) · [Changelog](CHANGELOG.md) · [EithonX](https://github.com/EithonX)

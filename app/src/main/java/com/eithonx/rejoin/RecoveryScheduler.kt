@@ -28,10 +28,15 @@ object RecoveryScheduler {
     private fun scheduler(context: Context): JobScheduler =
         context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
 
-    private fun wifiRequest(): NetworkRequest = NetworkRequest.Builder()
-        .clearCapabilities()
-        .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-        .build()
+    internal fun wifiRequest(): NetworkRequest = NetworkRequest.Builder().apply {
+        if (Build.VERSION.SDK_INT >= 30) clearCapabilities()
+        else {
+            removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+            removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
+            removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+        }
+        addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+    }.build()
 
     private fun wifiConstraint(builder: JobInfo.Builder): JobInfo.Builder {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
@@ -45,18 +50,25 @@ object RecoveryScheduler {
             Pair(15L * 60_000L, 5L * 60_000L)
         else Pair(30L * 60_000L, 10L * 60_000L)
 
-    fun active(context: Context): Boolean = scheduler(context).getPendingJob(JOB_ID) != null
+    private fun JobScheduler.periodicJob(): JobInfo? =
+        if (Build.VERSION.SDK_INT >= 24) getPendingJob(JOB_ID)
+        else allPendingJobs.firstOrNull { it.id == JOB_ID }
+
+    fun active(context: Context): Boolean = scheduler(context).periodicJob() != null
 
     fun schedulePeriodic(context: Context): Boolean {
         if (!RecoveryPrefs.enabled(context)) return false
         val (period, flex) = periodAndFlex(context)
         val job = wifiConstraint(JobInfo.Builder(
             JOB_ID, ComponentName(context, ProbeJobService::class.java)
-        )).setPeriodic(period, flex)
-            .setPersisted(true).build()
+        )).apply {
+            if (Build.VERSION.SDK_INT >= 24) setPeriodic(period, flex)
+            else setPeriodic(period)
+            setPersisted(true)
+        }.build()
         return try {
             val manager = scheduler(context)
-            val old = manager.getPendingJob(JOB_ID)
+            val old = manager.periodicJob()
             // Replacing an identical periodic job unnecessarily resets its cadence.
             if (old != null && old.isPeriodic && old.intervalMillis == period) return true
             val ok = manager.schedule(job) == JobScheduler.RESULT_SUCCESS

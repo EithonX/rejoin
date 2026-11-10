@@ -164,21 +164,28 @@ class SetupActivity : RejoinActivity() {
 
     @Composable
     private fun ReadyStep(profiles: List<TrustedNetworks.Profile>) {
-        val enabled = RecoveryPrefs.enabled(this)
+        val health = remember(revision) { BackgroundHealth.inspect(this) }
         val canSignIn = profiles.any { CredentialVault.hasLoginFor(this, it) }
         when {
             !canSignIn -> {
                 ScreenIntro("Choose a login", "Assign a saved login to your Wi-Fi.")
                 PageButton("Manage saved Wi-Fi") { open(NetworksActivity::class.java) }
             }
-            enabled -> {
-                ScreenIntro("Auto sign-in is on", "Rejoin can sign in again when your session expires.")
-                PageButton("Done", action = ::finishSetup)
+            health.enabled -> {
+                val issue = health.issue?.takeIf { it.required }
+                if (issue != null) {
+                    ScreenIntro("Finish background setup")
+                    PermissionNotice(issue) { resolveBackgroundIssue(issue) }
+                    PageButton("Do this later", filled = false, action = ::finishSetup)
+                } else {
+                    ScreenIntro("You’re all set")
+                    PageButton("Done", action = ::finishSetup)
+                }
             }
             else -> {
                 ScreenIntro("You’re ready to sign in", "Turn on auto sign-in to reconnect when your session expires.")
                 PageButton("Turn on auto sign-in") {
-                    if (RecoveryPrefs.enable(this)) finishSetup()
+                    if (RecoveryPrefs.enable(this)) revisionChanged()
                     else notice("Couldn’t start auto sign-in", "Try again or finish setup with auto sign-in off.")
                 }
                 PageButton("Keep it off", filled = false, action = ::finishSetup)

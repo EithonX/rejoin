@@ -1,24 +1,19 @@
 package com.eithonx.rejoin
 
-import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import java.io.File
 
 class ConnectionScreensTest {
     @get:Rule
@@ -33,7 +28,8 @@ class ConnectionScreensTest {
                 HomeScreen(
                     HomeUi(HomeStatus("Online", tone = ConnectionTone.ONLINE, actionLabel = "Check connection"),
                         network = "Residence Wi-Fi", automation = "On"),
-                    onSettings = { settingsOpened = true }, onAutomation = {}, onActivity = {}
+                    updateVersion = null, onSettings = { settingsOpened = true },
+                    onAutomation = {}, onActivity = {}, onIssue = {}, onUpdate = {}
                 )
             }
         }
@@ -43,7 +39,6 @@ class ConnectionScreensTest {
         compose.onNodeWithText("Activity").assertIsDisplayed()
         compose.onNodeWithContentDescription("Settings").performClick()
         compose.runOnIdle { assertTrue(settingsOpened) }
-        screenshot("home-dark")
     }
 
     @Test
@@ -54,9 +49,9 @@ class ConnectionScreensTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.4f)) {
                 RejoinTheme(dark = false) {
-                    SettingsScreen(SettingsUi(1, 1, "On", "2.4.0-beta4"), onBack = {},
+                    SettingsScreen(SettingsUi(1, 1, "On"), "System default", onBack = {},
                         onNetworks = {}, onLogins = { loginsOpened = true }, onAutomation = {},
-                        onHelp = {}, onDeveloper = {})
+                        onAppearance = {}, onHelp = {}, onAbout = {})
                 }
             }
         }
@@ -64,13 +59,6 @@ class ConnectionScreensTest {
         compose.onNodeWithText("Saved Wi-Fi").assertIsDisplayed()
         compose.onNodeWithText("Saved logins").assertIsDisplayed().performClick()
         compose.runOnIdle { assertTrue(loginsOpened) }
-        screenshot("settings-large-text")
-        compose.onNodeWithText("Developer").performScrollTo().assertIsDisplayed()
-    }
-
-    private fun screenshot(name: String) {
-        val file = File(compose.activity.filesDir, "$name.png")
-        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
-        file.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+        compose.onNodeWithText("About").performScrollTo().assertIsDisplayed()
     }
 }

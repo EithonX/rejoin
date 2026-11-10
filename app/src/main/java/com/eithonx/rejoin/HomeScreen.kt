@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
@@ -56,7 +57,8 @@ internal data class HomeUi(
     val status: HomeStatus = HomeStatus("Checking Wi-Fi", tone = ConnectionTone.WORKING),
     val network: String? = null,
     val automation: String = "Off",
-    val lastChecked: String? = null
+    val lastChecked: String? = null,
+    val issue: BackgroundHealth.Issue? = null
 )
 
 internal val relayBackground = Color(0xFF263444)
@@ -66,9 +68,12 @@ private val relayMuted = Color(0xFFCAD5DF)
 @Composable
 internal fun HomeScreen(
     ui: HomeUi,
+    updateVersion: String?,
     onSettings: () -> Unit,
     onAutomation: () -> Unit,
-    onActivity: () -> Unit
+    onActivity: () -> Unit,
+    onIssue: (BackgroundHealth.Issue) -> Unit,
+    onUpdate: () -> Unit
 ) {
     RejoinPage("Rejoin", wordmark = true, actions = {
         IconButton(onClick = onSettings) {
@@ -76,6 +81,10 @@ internal fun HomeScreen(
         }
     }) {
         ConnectionCard(ui.status, ui.network)
+        ui.issue?.let { PermissionNotice(it) { onIssue(it) } }
+        if (updateVersion != null) ListGroup {
+            ActionRow("Update available", "Version $updateVersion", R.drawable.ic_about, onUpdate)
+        }
         SectionLabel("Connection")
         ListGroup {
             ActionRow("Auto sign-in", ui.automation, R.drawable.ic_shield, onAutomation)
@@ -100,7 +109,14 @@ private fun ConnectionCard(status: HomeStatus, network: String?) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text("WI-FI STATUS", style = MaterialTheme.typography.labelSmall, color = relayMuted)
+                    if (status.tone == ConnectionTone.ONLINE) {
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Icon(Icons.Filled.CheckCircle, null, Modifier.size(15.dp), tint = Color(0xFFD8EBFA))
+                            Text("INTERNET AVAILABLE", style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFD8EBFA))
+                        }
+                    } else Text("WI-FI STATUS", style = MaterialTheme.typography.labelSmall, color = relayMuted)
                     Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
                         AnimatedContent(
                             targetState = status.title,

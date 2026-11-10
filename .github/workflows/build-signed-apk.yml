@@ -64,13 +64,33 @@ jobs:
           fi
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
           cp "$apk" "$RUNNER_TEMP/Rejoin.apk"
-          (cd "$RUNNER_TEMP" && sha256sum Rejoin.apk > Rejoin.apk.sha256)
+          version_code="$(sed -n "s/^package: .*versionCode='\([^']*\)'.*/\1/p" <<< "$badging")"
+          min_sdk="$(sed -n "s/^minSdkVersion:'\([^']*\)'.*/\1/p" <<< "$badging")"
+          cd "$RUNNER_TEMP"
+          sha256sum Rejoin.apk > Rejoin.apk.sha256
+          python3 - "$version" "$version_code" "$min_sdk" <<'PYTHON'
+          import json
+          import sys
+          from pathlib import Path
+
+          version, code, sdk = sys.argv[1:]
+          apk = Path("Rejoin.apk")
+          manifest = {
+              "tag": f"v{version}",
+              "versionCode": int(code),
+              "minSdk": int(sdk),
+              "size": apk.stat().st_size,
+              "sha256": Path("Rejoin.apk.sha256").read_text().split()[0],
+          }
+          Path("rejoin-update.json").write_text(json.dumps(manifest) + "\n")
+          PYTHON
       - uses: actions/upload-artifact@v4
         with:
           name: Rejoin-signed-apk
           path: |
             ${{ runner.temp }}/Rejoin.apk
             ${{ runner.temp }}/Rejoin.apk.sha256
+            ${{ runner.temp }}/rejoin-update.json
           if-no-files-found: error
 
   publish:
@@ -104,6 +124,6 @@ jobs:
           fi
           flags=()
           if [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$RELEASE_TAG" dist/Rejoin.apk dist/Rejoin.apk.sha256 \
+          gh release create "$RELEASE_TAG" dist/Rejoin.apk dist/Rejoin.apk.sha256 dist/rejoin-update.json \
             --repo "$GITHUB_REPOSITORY" --verify-tag --title "Rejoin $VERSION" \
             --generate-notes "${flags[@]}"

@@ -23,10 +23,10 @@ android {
 
     defaultConfig {
         applicationId = "com.eithonx.rejoin"
-        minSdk = 26
+        minSdk = 23
         targetSdk = 35
-        versionCode = 18
-        versionName = "2.4.0-beta4"
+        versionCode = 19
+        versionName = "2.4.0-rc1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -40,7 +40,16 @@ android {
         buildTypes.named("release") { signingConfig = config }
     }
 
-    buildFeatures { compose = true }
+    buildTypes.named("release") {
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

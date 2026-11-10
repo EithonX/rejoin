@@ -10,6 +10,4 @@ Rejoin is designed as a local utility rather than a hosted service.
 
 **Deletion:** Remove individual accounts in Saved logins, remove router profiles in Trusted Wi-Fi, or clear all saved logins in Advanced settings. Clearing the app's data or uninstalling also removes local app data and Keystore records.
 
-**Other services:** Opening the maintainer's GitHub profile launches a browser under its own privacy policy.
-
-Updated for Rejoin 2.1 beta.
+**Updates:** Rejoin checks GitHub Releases when the app opens, at most once per day, or when you ask it to check. GitHub can see standard connection metadata such as your IP address. The check sends no saved network information or login. Downloads start only when you select an update and are verified before Android asks you to install them.

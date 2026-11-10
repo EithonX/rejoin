@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.0-rc1
+
+- Check GitHub Releases for verified in-app updates.
+- Show blocked background sign-in on Home and guide location access during setup.
+- Add About and System, Light, and Dark theme choices.
+- Shrink release APKs and support Android 6.0 and newer.
+
 ## 2.4.0-beta4
 
 - Illustrate connection states and animate setup between saved Wi-Fi, login and auto sign-in.

@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -42,12 +41,14 @@ class MainActivity : RejoinActivity() {
 
     @Composable
     override fun Screen() {
-        HomeScreen(home, onSettings = { open(SettingsActivity::class.java) },
+        HomeScreen(home, ReleaseUpdates.available?.version, onSettings = { open(SettingsActivity::class.java) },
             onAutomation = {
                 val profile = needsLoginFor
                 if (profile != null) openLoginFor(profile) else open(ProtectionActivity::class.java)
             },
-            onActivity = { open(ActivityLogActivity::class.java) })
+            onActivity = { open(ActivityLogActivity::class.java) },
+            onIssue = ::resolveBackgroundIssue,
+            onUpdate = { open(AboutActivity::class.java) })
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -91,9 +92,9 @@ class MainActivity : RejoinActivity() {
         needsLoginFor = profile?.takeIf { !hasAccount }
         val automation = when {
             !hasProfiles || !consent || !hasAnyAccount -> "Setup needed"
-            health.level == BackgroundHealth.Level.READY -> "On"
-            health.level == BackgroundHealth.Level.PAUSED -> "Off"
-            else -> "Review background access"
+            !health.enabled -> "Off"
+            health.issue?.required == true -> "Needs attention"
+            else -> "On"
         }
         val lastChecked = if (checkedHere && checkedAt > 0)
             "Checked " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
@@ -140,7 +141,10 @@ class MainActivity : RejoinActivity() {
             else -> HomeStatus("Connection unverified",
                 actionLabel = "Check connection") { runCheck(wifi) }
         }
-        home = HomeUi(status, profile?.label ?: wifi?.ssid, automation, lastChecked)
+        val issue = health.issue?.takeIf {
+            it.required && it != BackgroundHealth.Issue.PRECISE_LOCATION && it != BackgroundHealth.Issue.LOCATION_OFF
+        }
+        home = HomeUi(status, profile?.label ?: wifi?.ssid, automation, lastChecked, issue)
     }
 
     private fun openLoginFor(profile: TrustedNetworks.Profile) {
@@ -262,8 +266,7 @@ class MainActivity : RejoinActivity() {
                 }
             }
         }
-        val request = NetworkRequest.Builder().clearCapabilities()
-            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build()
+        val request = RecoveryScheduler.wifiRequest()
         try {
             connectivity.registerNetworkCallback(request, callback)
             monitor = callback
@@ -305,6 +308,7 @@ class MainActivity : RejoinActivity() {
     override fun onResume() {
         super.onResume()
         render()
+        ReleaseUpdates.refresh(this)
     }
 
     override fun onStop() {
