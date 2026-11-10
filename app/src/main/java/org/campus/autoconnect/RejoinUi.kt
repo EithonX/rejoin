@@ -11,37 +11,42 @@ import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.ImageView
 
 /**
- * Rejoin design system — warm canvas, botanical ink and a single jade accent.
- * Uses only platform views; no WebView or third-party UI runtime.
+ * Rejoin visual foundations.
+ *
+ * Dark-first, restrained contrast and an 8dp spacing rhythm. The mint accent
+ * is reserved for actions and positive states, rather than decoration.
  */
 object RejoinUi {
-    val canvas = Color.rgb(246, 248, 245)      // F6F8F5
-    val ink = Color.rgb(25, 48, 43)           // 19302B
-    val jade = Color.rgb(31, 105, 84)         // 1F6954
-    val jadeDeep = Color.rgb(19, 70, 56)      // 134638
-    val mint = Color.rgb(215, 239, 227)       // D7EFE3
-    val muted = Color.rgb(108, 128, 119)      // 6C8077
-    val line = Color.rgb(223, 232, 225)       // DFE8E1
-    val white = Color.WHITE
-    val amber = Color.rgb(176, 105, 36)
-    val rose = Color.rgb(165, 69, 62)
+    val canvas: Int = Color.rgb(11, 16, 21)       // #0B1015
+    val panel: Int = Color.rgb(20, 28, 33)        // #141C21
+    val raised: Int = Color.rgb(27, 37, 43)       // #1B252B
+    val ink: Int = Color.rgb(236, 243, 240)       // #ECF3F0
+    val jade: Int = Color.rgb(117, 220, 180)      // #75DCB4
+    val jadeDeep: Int = Color.rgb(21, 48, 39)     // #153027
+    val mint: Int = Color.rgb(194, 240, 218)      // #C2F0DA
+    val muted: Int = Color.rgb(148, 165, 160)     // #94A5A0
+    val line: Int = Color.rgb(43, 56, 62)         // #2B383E
+    val white: Int = Color.WHITE
+    val amber: Int = Color.rgb(230, 188, 112)    // #E6BC70
+    val rose: Int = Color.rgb(235, 143, 133)     // #EB8F85
 
-    fun dp(context: Context, n: Int) = (n * context.resources.displayMetrics.density + .5f).toInt()
+    fun dp(ctx: Context, px: Int): Int =
+        (px * ctx.resources.displayMetrics.density + .5f).toInt()
 
-    fun surface(ctx: Context, color: Int, radius: Int = 21, stroke: Int? = null): GradientDrawable =
+    fun surface(ctx: Context, color: Int, radius: Int = 16, stroke: Int? = null) =
         GradientDrawable().apply {
             setColor(color)
             cornerRadius = dp(ctx, radius).toFloat()
             if (stroke != null) setStroke(dp(ctx, 1), stroke)
         }
 
-    fun label(ctx: Context, value: String, sp: Float = 14f, color: Int = ink,
-              bold: Boolean = false): TextView =
+    fun label(ctx: Context, value: String, sp: Float = 14f,
+              color: Int = ink, bold: Boolean = false): TextView =
         TextView(ctx).apply {
             text = value
             textSize = sp
@@ -51,19 +56,19 @@ object RejoinUi {
             includeFontPadding = false
         }
 
-    fun column(ctx: Context, padding: Int = 0): LinearLayout =
-        LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            if (padding > 0) setPadding(dp(ctx, padding), dp(ctx, padding),
-                dp(ctx, padding), dp(ctx, padding))
-        }
+    fun column(ctx: Context, padding: Int = 0) = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        if (padding != 0) setPadding(dp(ctx, padding), dp(ctx, padding),
+            dp(ctx, padding), dp(ctx, padding))
+    }
 
-    fun row(ctx: Context): LinearLayout = LinearLayout(ctx).apply {
+    fun row(ctx: Context) = LinearLayout(ctx).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
     }
 
-    fun add(parent: LinearLayout, child: View, top: Int = 0, bottom: Int = 0, weight: Float = 0f) {
+    fun add(parent: LinearLayout, child: View, top: Int = 0,
+            bottom: Int = 0, weight: Float = 0f) {
         val params = LinearLayout.LayoutParams(
             if (weight > 0f) 0 else LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT, weight)
@@ -72,20 +77,24 @@ object RejoinUi {
         parent.addView(child, params)
     }
 
-    fun inset(ctx: Context, color: Int = white): LinearLayout =
-        column(ctx, 20).apply { background = surface(ctx, color, 22, if (color == white) line else null) }
+    fun inset(ctx: Context, color: Int = panel) = column(ctx, 18).apply {
+        background = surface(ctx, color, 17,
+            if (color == panel) line else null)
+    }
 
-    fun action(ctx: Context, value: String, filled: Boolean = true, onClick: () -> Unit): TextView {
-        val base = if (filled) jade else white
-        val border = if (filled) null else line
-        val mask = surface(ctx, Color.WHITE, 16)
-        val drawable = RippleDrawable(ColorStateList.valueOf(
-            if (filled) Color.rgb(94, 151, 133) else mint
-        ), surface(ctx, base, 16, border), mask)
-        return label(ctx, value, 14f, if (filled) white else ink, true).apply {
+    fun action(ctx: Context, value: String, filled: Boolean = true,
+               onClick: () -> Unit): TextView {
+        val base = if (filled) jade else raised
+        val text = if (filled) canvas else ink
+        val drawable = RippleDrawable(
+            ColorStateList.valueOf(if (filled) Color.rgb(165, 244, 211) else line),
+            surface(ctx, base, 13, if (filled) null else line),
+            surface(ctx, Color.WHITE, 13)
+        )
+        return label(ctx, value, 15f, text, true).apply {
             gravity = Gravity.CENTER
             minHeight = dp(ctx, 52)
-            setPadding(dp(ctx, 14), dp(ctx, 14), dp(ctx, 14), dp(ctx, 14))
+            setPadding(dp(ctx, 16), dp(ctx, 12), dp(ctx, 16), dp(ctx, 12))
             background = drawable
             isClickable = true
             isFocusable = true
@@ -93,19 +102,17 @@ object RejoinUi {
         }
     }
 
-    fun smallAction(ctx: Context, value: String, onClick: () -> Unit): TextView =
+    fun smallAction(ctx: Context, value: String, onClick: () -> Unit) =
         label(ctx, value, 13f, jade, true).apply {
-            setPadding(dp(ctx, 8), dp(ctx, 10), dp(ctx, 8), dp(ctx, 10))
+            minHeight = dp(ctx, 42)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(ctx, 8), dp(ctx, 8), dp(ctx, 8), dp(ctx, 8))
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
         }
 
-    fun space(ctx: Context, dpSize: Int): View = View(ctx).apply {
-        layoutParams = LinearLayout.LayoutParams(1, dp(ctx, dpSize))
-    }
-
-    fun rule(ctx: Context): View = View(ctx).apply {
+    fun rule(ctx: Context) = View(ctx).apply {
         setBackgroundColor(line)
         layoutParams = LinearLayout.LayoutParams(-1, dp(ctx, 1))
     }
@@ -121,11 +128,10 @@ object RejoinUi {
     fun applySystemBars(activity: Activity, view: View) {
         activity.window.statusBarColor = canvas
         activity.window.navigationBarColor = canvas
-        @Suppress("DEPRECATION")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            activity.window.decorView.systemUiVisibility =
-                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
-                (if (Build.VERSION.SDK_INT >= 27) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0)
+            // No LIGHT_STATUS_BAR or LIGHT_NAVIGATION_BAR: light symbols on dark.
+            @Suppress("DEPRECATION")
+            activity.window.decorView.systemUiVisibility = 0
         }
         if (Build.VERSION.SDK_INT >= 30) {
             view.setOnApplyWindowInsetsListener { v, insets ->
@@ -136,5 +142,43 @@ object RejoinUi {
         } else {
             view.fitsSystemWindows = true
         }
+    }
+
+    fun header(ctx: Activity, parent: LinearLayout,
+               title: String, subtitle: String? = null) {
+        val bar = row(ctx)
+        val back = smallAction(ctx, "‹") { ctx.finish() }.apply {
+            gravity = Gravity.CENTER
+            textSize = 29f
+            contentDescription = "Back"
+        }
+        bar.addView(back, LinearLayout.LayoutParams(dp(ctx, 40), dp(ctx, 46)))
+        bar.addView(label(ctx, title, 25f, ink, true),
+            LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(ctx, 4) })
+        add(parent, bar)
+        if (subtitle != null) add(parent,
+            label(ctx, subtitle, 13f, muted), 9)
+    }
+
+    fun section(parent: LinearLayout, text: String, marginTop: Int = 28) {
+        add(parent, label(parent.context, text.uppercase(), 11f, muted, true)
+            .apply { letterSpacing = .12f }, marginTop)
+    }
+
+    fun navRow(ctx: Context, heading: String, detail: String,
+               onTap: () -> Unit): LinearLayout {
+        val row = row(ctx).apply {
+            setPadding(dp(ctx, 2), dp(ctx, 15), dp(ctx, 2), dp(ctx, 15))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onTap() }
+        }
+        val stack = column(ctx)
+        row.addView(stack, LinearLayout.LayoutParams(0, -2, 1f))
+        add(stack, label(ctx, heading, 16f, ink, true))
+        if (detail.isNotBlank()) add(stack, label(ctx, detail, 12f, muted), 6)
+        val chevron = label(ctx, "›", 25f, muted).apply { gravity = Gravity.CENTER }
+        row.addView(chevron, LinearLayout.LayoutParams(dp(ctx, 24), dp(ctx, 42)))
+        return row
     }
 }
