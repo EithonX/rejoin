@@ -1,0 +1,131 @@
+name: Build and release Rejoin
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Leave empty for a signed test APK, or enter the version tag to publish"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rejoin-release-${{ inputs.release_tag || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.sign.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: 'platforms;android-35 build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - name: Build and verify signed APK
+        id: sign
+        env:
+          REJOIN_KEYSTORE_BASE64: ${{ secrets.REJOIN_KEYSTORE_BASE64 }}
+          REJOIN_KEYSTORE_PASSWORD: ${{ secrets.REJOIN_KEYSTORE_PASSWORD }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          : "${REJOIN_KEYSTORE_BASE64:?Set REJOIN_KEYSTORE_BASE64 in the release environment}"
+          : "${REJOIN_KEYSTORE_PASSWORD:?Set REJOIN_KEYSTORE_PASSWORD in the release environment}"
+          umask 077
+          export REJOIN_KEYSTORE_PATH="$(mktemp "$RUNNER_TEMP/rejoin-signing.XXXXXXXX")"
+          export REJOIN_KEY_ALIAS=rejoin REJOIN_KEY_PASSWORD="$REJOIN_KEYSTORE_PASSWORD"
+          trap 'rm -f -- "$REJOIN_KEYSTORE_PATH"' EXIT
+          printf '%s' "$REJOIN_KEYSTORE_BASE64" | tr -d '\r\n' | base64 --decode > "$REJOIN_KEYSTORE_PATH"
+          unset REJOIN_KEYSTORE_BASE64
+
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease
+          apk=app/build/outputs/apk/release/app-release.apk
+          build_tools="$ANDROID_HOME/build-tools/35.0.0"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk"
+          badging="$("$build_tools/aapt2" dump badging "$apk")"
+          grep -Fq "package: name='com.eithonx.rejoin' " <<< "$badging"
+          version="$(sed -n "s/^package: .*versionName='\([^']*\)'.*/\1/p" <<< "$badging")"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]
+          if [[ -n "$RELEASE_TAG" && "$RELEASE_TAG" != "v$version" ]]; then
+            echo "::error::The tag must match the APK version. Expected v$version."
+            exit 1
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          cp "$apk" "$RUNNER_TEMP/Rejoin.apk"
+          version_code="$(sed -n "s/^package: .*versionCode='\([^']*\)'.*/\1/p" <<< "$badging")"
+          min_sdk="$(sed -n "s/^minSdkVersion:'\([^']*\)'.*/\1/p" <<< "$badging")"
+          cd "$RUNNER_TEMP"
+          sha256sum Rejoin.apk > Rejoin.apk.sha256
+          python3 - "$version" "$version_code" "$min_sdk" <<'PYTHON'
+          import json
+          import sys
+          from pathlib import Path
+
+          version, code, sdk = sys.argv[1:]
+          apk = Path("Rejoin.apk")
+          manifest = {
+              "tag": f"v{version}",
+              "versionCode": int(code),
+              "minSdk": int(sdk),
+              "size": apk.stat().st_size,
+              "sha256": Path("Rejoin.apk.sha256").read_text().split()[0],
+          }
+          Path("rejoin-update.json").write_text(json.dumps(manifest) + "\n")
+          PYTHON
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Rejoin-signed-apk
+          path: |
+            ${{ runner.temp }}/Rejoin.apk
+            ${{ runner.temp }}/Rejoin.apk.sha256
+            ${{ runner.temp }}/rejoin-update.json
+          if-no-files-found: error
+
+  publish:
+    if: inputs.release_tag != ''
+    needs: sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Rejoin-signed-apk
+          path: dist
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          VERSION: ${{ needs.sign.outputs.version }}
+        shell: bash
+        run: |
+          (cd dist && sha256sum --check Rejoin.apk.sha256)
+          ref="repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG"
+          tagged_sha="$(gh api "$ref" --jq '.object.sha' 2>/dev/null || true)"
+          if [[ -z "$tagged_sha" ]]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$RELEASE_TAG" -f sha="$GITHUB_SHA" --silent
+          elif [[ "$tagged_sha" != "$GITHUB_SHA" ]]; then
+            echo "::error::This tag already points to a different commit."
+            exit 1
+          fi
+          flags=()
+          if [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" dist/Rejoin.apk dist/Rejoin.apk.sha256 dist/rejoin-update.json \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --title "Rejoin $VERSION" \
+            --generate-notes "${flags[@]}"
