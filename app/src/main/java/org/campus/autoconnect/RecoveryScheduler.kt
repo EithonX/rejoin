@@ -79,15 +79,11 @@ object RecoveryScheduler {
         } catch (_: Exception) { false }
     }
 
-    /** Compatibility: install persistent coverage and request one early check. */
     fun schedule(context: Context, delayMs: Long): Boolean {
         val periodic = schedulePeriodic(context)
         if (periodic) scheduleEvent(context, delayMs)
         return periodic
     }
-
-    /** The periodic job remains scheduled independently of each job run. */
-    fun scheduleAfter(context: Context, result: String): Boolean = schedulePeriodic(context)
 
     private fun wifiIntent(context: Context): PendingIntent =
         PendingIntent.getBroadcast(

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 296" width="1100" height="296" role="img" aria-labelledby="title description">
+  <title id="title">Rejoin</title>
+  <desc id="description">An Android app that signs you back into campus Wi-Fi.</desc>
+  <defs>
+    <pattern id="dots" width="18" height="18" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#35425a"/>
+    </pattern>
+  </defs>
+  <rect width="1100" height="296" rx="28" fill="#11151e"/>
+  <rect x="1" y="1" width="1098" height="294" rx="27" fill="none" stroke="#35425a" stroke-width="2"/>
+  <g font-family="system-ui, -apple-system, Segoe UI, sans-serif">
+    <text x="72" y="77" fill="#bdc9ff" font-size="19" font-weight="600" letter-spacing="3">ANDROID · CAMPUS WI-FI</text>
+    <text x="67" y="176" fill="#f2f4fd" font-size="100" font-weight="700" letter-spacing="-5">Rejoin</text>
+    <text x="73" y="230" fill="#aab5cb" font-size="28">Signs you back in when campus Wi-Fi expires.</text>
+  </g>
+  <rect x="778" y="49" width="249" height="198" rx="28" fill="#1a2130" stroke="#35425a" stroke-width="2"/>
+  <rect x="789" y="59" width="227" height="176" rx="20" fill="url(#dots)"/>
+  <g transform="translate(823 61) scale(5)" fill="none" stroke="#bdc9ff" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 12C10.5 6 20.5 6 27 12M8.5 16.5C12.1 13.3 17 12.7 21 14.4M13 21C14 20.2 15.2 19.8 16.4 19.8" stroke-width="2.4"/>
+    <path d="M23.7 16.6C27.9 16.6 30 21.1 27.9 24.4C26.5 26.6 23.8 27.3 21.5 26.1L21.7 22.1M21.5 26.1L25.3 27.8" stroke-width="2.2"/>
+  </g>
+</svg>

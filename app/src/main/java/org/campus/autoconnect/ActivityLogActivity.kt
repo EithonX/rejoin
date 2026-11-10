@@ -3,74 +3,45 @@ package org.campus.autoconnect
 import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
-import android.view.Gravity
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import java.text.DateFormat
 import java.util.Date
 
-/** A private activity trail, not an analytics dashboard. */
 class ActivityLogActivity : Activity() {
-    private lateinit var events: LinearLayout
+    private lateinit var body: LinearLayout
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val scroller = ScrollView(this).apply {
-            setBackgroundColor(RejoinUi.canvas)
-        }
-        val body = RejoinUi.column(this).apply {
-            val side = RejoinUi.dp(this@ActivityLogActivity, 24)
-            setPadding(side, RejoinUi.dp(this@ActivityLogActivity, 24),
-                side, side)
-        }
-        scroller.addView(body)
-        setContentView(scroller)
-        RejoinUi.applySystemBars(this, scroller)
-        RejoinUi.header(this, body, "Activity")
-        val top = RejoinUi.row(this)
-        top.addView(RejoinUi.label(this, "ON THIS DEVICE", 11f, RejoinUi.muted, true)
-            .apply { letterSpacing = .13f },
-            LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(RejoinUi.smallAction(this, "Clear") {
-            AlertDialog.Builder(this)
-                .setTitle("Clear activity?")
-                .setMessage("This won't change your saved networks or logins.")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Clear") { _, _ ->
-                    ActivityHistory.clear(this)
-                    refresh()
-                }.show()
-        })
-        RejoinUi.add(body, top, 25)
-        events = RejoinUi.column(this)
-        RejoinUi.add(body, events, 9)
+        body = RejoinUi.screen(this, "Activity")
         refresh()
     }
 
     private fun refresh() {
-        if (!::events.isInitialized) return
-        events.removeAllViews()
+        body.removeAllViews()
         val recent = ActivityHistory.latest(this, 24)
         if (recent.isEmpty()) {
-            RejoinUi.add(events,
-                RejoinUi.label(this, "No events yet.", 16f, RejoinUi.ink, true), 32)
-            RejoinUi.add(events,
-                RejoinUi.label(this, "When Rejoin reconnects, you'll see it here.",
-                    13f, RejoinUi.muted), 10)
+            RejoinUi.add(body, RejoinUi.label(this, "No activity yet", 25f, bold = true))
+            RejoinUi.add(body, RejoinUi.label(this,
+                "Rejoin will show sign-ins and setup changes here.", 15f, RejoinUi.muted), 6)
             return
         }
         recent.forEachIndexed { index, event ->
-            if (index > 0) RejoinUi.add(events, RejoinUi.rule(this), 15)
-            val row = RejoinUi.row(this)
-            row.setPadding(0, RejoinUi.dp(this, 17), 0, RejoinUi.dp(this, 2))
-            row.addView(RejoinUi.label(this, "●", 10f, RejoinUi.jade),
-                LinearLayout.LayoutParams(RejoinUi.dp(this, 25), -2))
-            val copy = RejoinUi.column(this)
-            row.addView(copy, LinearLayout.LayoutParams(0, -2, 1f))
-            RejoinUi.add(copy, RejoinUi.label(this, event.event, 15f, RejoinUi.ink, true))
-            RejoinUi.add(copy, RejoinUi.label(this,
+            if (index > 0) RejoinUi.add(body, RejoinUi.rule(this), 12)
+            RejoinUi.add(body, RejoinUi.label(this, event.event, 16f, bold = true), if (index == 0) 0 else 12)
+            RejoinUi.add(body, RejoinUi.label(this,
                 DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-                    .format(Date(event.time)), 12f, RejoinUi.muted), 7)
-            events.addView(row)
+                    .format(Date(event.time)), 14f, RejoinUi.muted), 2)
         }
+        RejoinUi.add(body, RejoinUi.smallAction(this, "Clear activity") { confirmClear() }, 16)
+    }
+
+    private fun confirmClear() {
+        AlertDialog.Builder(this).setTitle("Clear activity?")
+            .setMessage("This removes the connection history stored on this phone.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Clear") { _, _ ->
+                ActivityHistory.clear(this)
+                refresh()
+            }.show().also { RejoinUi.destructive(it) }
     }
 }

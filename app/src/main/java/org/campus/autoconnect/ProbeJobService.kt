@@ -2,66 +2,64 @@ package org.campus.autoconnect
 
 import android.app.job.JobParameters
 import android.app.job.JobService
-import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 
-/**
- * Short Wi-Fi-constrained probe. Jobs persist in Android JobScheduler after
- * this process exits. Periodic job 417 is never rearmed from inside its worker.
- * This avoids the old race where recovery silently stopped after a few hours.
- */
 class ProbeJobService : JobService() {
-    @Volatile private var stopping = false
-    @Volatile private var worker: Thread? = null
+    private val jobs = mutableMapOf<Int, Thread>()
+    private val main = Handler(Looper.getMainLooper())
+    private val prefs by lazy { getSharedPreferences("profile", MODE_PRIVATE) }
 
     override fun onStartJob(params: JobParameters): Boolean {
-        if (!RecoveryPrefs.enabled(this)) return false
-        stopping = false
-        val p = getSharedPreferences("profile", Context.MODE_PRIVATE)
-        val launched = System.currentTimeMillis()
-        p.edit()
-            .putLong("background_last_started", launched)
+        if (!RecoveryPrefs.enabled(this) || jobs.containsKey(params.jobId)) return false
+        prefs.edit()
+            .putLong("background_last_started", System.currentTimeMillis())
             .putString("background_state", "checking")
-            .putInt("background_job_id", params.jobId)
             .apply()
-        val thread = Thread {
-            var result = "Check was interrupted"
-            try {
+
+        val thread = Thread({
+            val result = try {
                 val network = if (Build.VERSION.SDK_INT >= 28) params.network else null
-                result = SessionEngine.run(applicationContext, requiredNetwork = network)
-            } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-            } catch (e: Exception) {
-                result = "Background check couldn't finish (" + e.javaClass.simpleName + ")"
-            } finally {
-                val finished = System.currentTimeMillis()
-                getSharedPreferences("profile", Context.MODE_PRIVATE).edit()
-                    .putLong("background_last_finished", finished)
-                    .putString("background_last_result", result.take(220))
-                    .putString("background_state", if (stopping) "interrupted" else "finished")
-                    .apply()
-                if (!stopping) {
-                    // The periodic schedule is maintained by the OS, not our thread.
-                    jobFinished(params, false)
-                }
+                SessionEngine.run(applicationContext, requiredNetwork = network)
+            } catch (_: RuntimeException) {
+                SessionEngine.Result("Background check couldn’t finish", RecoveryPolicy.Outcome.FAILED)
             }
-        }
-        worker = thread
-        thread.name = "Rejoin-background-check"
+            val completed = Thread.currentThread()
+            main.post {
+                if (jobs[params.jobId] !== completed) return@post
+                jobs.remove(params.jobId)
+                if (!result.busy) {
+                    prefs.edit()
+                        .putLong("background_last_finished", System.currentTimeMillis())
+                        .putString("background_last_result", result.message.take(220))
+                        .putInt("background_job_id", params.jobId)
+                        .putString("background_state", "finished")
+                        .apply()
+                }
+                jobFinished(params, false)
+            }
+        }, "Rejoin-background-check")
+        jobs[params.jobId] = thread
         thread.start()
         return true
     }
 
     override fun onStopJob(params: JobParameters): Boolean {
-        stopping = true
-        worker?.interrupt()
-        worker = null
-        getSharedPreferences("profile", Context.MODE_PRIVATE).edit()
-            .putString("background_state", "stopped by Android")
-            .putLong("background_last_stopped", System.currentTimeMillis())
-            .apply()
-        // Periodic job remains in the OS scheduler. Event-triggered attempts
-        // can use the next periodic check; don't retry aggressively.
+        jobs.remove(params.jobId)?.interrupt()
+        if (jobs.isEmpty()) {
+            prefs.edit()
+                .putString("background_state", "stopped by Android")
+                .putLong("background_last_stopped", System.currentTimeMillis())
+                .apply()
+        }
         return false
+    }
+
+    override fun onDestroy() {
+        jobs.values.forEach(Thread::interrupt)
+        jobs.clear()
+        main.removeCallbacksAndMessages(null)
+        super.onDestroy()
     }
 }

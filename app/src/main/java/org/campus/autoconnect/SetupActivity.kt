@@ -1,287 +1,205 @@
 package org.campus.autoconnect
 
-import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
-import android.text.InputType
 import android.view.Gravity
-import android.widget.CheckBox
-import android.widget.EditText
+import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 
-/**
- * Three real tasks, no introductory slides:
- *  1. Trust the Wi-Fi currently connected
- *  2. Save the single default login
- *  3. Enable automation
- *
- * Progress is derived from saved state and survives leaving the app.
- */
 class SetupActivity : Activity() {
-    private lateinit var root: ScrollView
-    private lateinit var body: LinearLayout
+    private val prefs by lazy { getSharedPreferences("profile", MODE_PRIVATE) }
+    private lateinit var progress: LinearLayout
     private lateinit var stepCaption: TextView
-    private lateinit var header: TextView
-    private lateinit var helper: TextView
-    private lateinit var workArea: LinearLayout
+    private lateinit var heading: TextView
+    private lateinit var detail: TextView
+    private lateinit var content: LinearLayout
     private lateinit var primary: TextView
     private lateinit var secondary: TextView
+    private lateinit var error: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        root = ScrollView(this).apply {
-            isFillViewport = true
-            setBackgroundColor(RejoinUi.canvas)
+        val page = RejoinUi.column(this).apply { setBackgroundColor(RejoinUi.canvas) }
+        val bar = RejoinUi.column(this).apply {
+            setPadding(RejoinUi.dp(context, 12), 0, RejoinUi.dp(context, 16), 0)
         }
-        body = RejoinUi.column(this).apply {
-            val side = RejoinUi.dp(this@SetupActivity, 27)
-            setPadding(side, RejoinUi.dp(this@SetupActivity, 30), side, side)
+        RejoinUi.header(this, bar, "Set up Rejoin")
+        RejoinUi.add(page, bar)
+        val body = RejoinUi.scrollBody(page)
+        stepCaption = RejoinUi.label(this, "", 14f, RejoinUi.accent, true)
+        RejoinUi.add(body, stepCaption)
+        progress = RejoinUi.row(this).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+        RejoinUi.add(body, progress, 8)
+        heading = RejoinUi.label(this, "", 32f, bold = true).apply { RejoinUi.heading(this) }
+        RejoinUi.add(body, heading, 24)
+        detail = RejoinUi.label(this, "", 16f, RejoinUi.muted)
+        RejoinUi.add(body, detail, 4)
+        content = RejoinUi.column(this)
+        RejoinUi.add(body, content, 20)
+        error = RejoinUi.label(this, "", 14f, RejoinUi.rose).apply {
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
-        root.addView(body)
-        setContentView(root)
-        RejoinUi.applySystemBars(this, root)
+        RejoinUi.add(body, error, 8)
 
-        val top = RejoinUi.row(this)
-        top.addView(RejoinUi.icon(this, R.drawable.ic_rejoin_mark, 39),
-            LinearLayout.LayoutParams(RejoinUi.dp(this, 39), RejoinUi.dp(this, 39)))
-        top.addView(RejoinUi.label(this, "rejoin", 24f, RejoinUi.ink, true),
-            LinearLayout.LayoutParams(0, -2, 1f).apply {
-                leftMargin = RejoinUi.dp(this@SetupActivity, 11)
-            })
-        RejoinUi.add(body, top)
-        stepCaption = RejoinUi.label(this, "", 11f, RejoinUi.jade, true)
-            .apply { letterSpacing = .13f }
-        RejoinUi.add(body, stepCaption, 55)
-
-        header = RejoinUi.label(this, "", 31f, RejoinUi.ink, true)
-        RejoinUi.add(body, header, 17)
-        helper = RejoinUi.label(this, "", 14f, RejoinUi.muted).apply {
-            setLineSpacing(RejoinUi.dp(this@SetupActivity, 4).toFloat(), 1f)
-        }
-        RejoinUi.add(body, helper, 12)
-
-        workArea = RejoinUi.column(this)
-        RejoinUi.add(body, workArea, 37)
-
-        primary = RejoinUi.action(this, "Continue") {}
-        RejoinUi.add(body, primary, 25)
-        secondary = RejoinUi.smallAction(this, "Not now") { deferSetup() }
-            .apply { gravity = Gravity.CENTER }
-        RejoinUi.add(body, secondary, 10)
-
+        val footer = RejoinUi.footer(page)
+        primary = RejoinUi.action(this, "Continue") { }
+        secondary = RejoinUi.smallAction(this, "Not now") { deferSetup() }.apply { gravity = Gravity.CENTER }
+        RejoinUi.add(footer, primary)
+        RejoinUi.add(footer, secondary, 4)
+        setContentView(page)
+        RejoinUi.applySystemBars(this, page)
         render()
     }
 
-    private fun stage(): Int {
-        val state = SetupFlow.next(
-            TrustedNetworks.all(this).isNotEmpty(),
-            CredentialVault.hasCredentials(this),
-            getSharedPreferences("profile", MODE_PRIVATE).getBoolean("http_opt_in", false)
-        )
-        return when (state) {
-            SetupFlow.Step.WIFI -> 1
-            SetupFlow.Step.LOGIN -> 2
-            SetupFlow.Step.READY -> 3
-        }
-    }
+    private fun step() = SetupFlow.next(TrustedNetworks.all(this).isNotEmpty(),
+        CredentialVault.hasCredentials(this), prefs.getBoolean("http_opt_in", false))
 
     private fun render() {
-        if (!::workArea.isInitialized) return
-        workArea.removeAllViews()
-        when (stage()) {
-            1 -> showNetworkStage()
-            2 -> showAccountStage()
-            else -> showReadyStage()
-        }
-    }
-
-    private fun showNetworkStage() {
-        stepCaption.text = "STEP 1 OF 3"
-        header.text = "Your Wi-Fi."
-        val permitted = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED
-        helper.text = if (!permitted) "Allow Wi-Fi access to find your current network."
-            else "Connect to the Wi-Fi you want Rejoin to remember."
-        val snapshot = WifiProbe.current(this)
-        val panel = RejoinUi.inset(this)
-        RejoinUi.add(workArea, panel)
-        RejoinUi.add(panel, RejoinUi.label(this, "CURRENT NETWORK", 11f,
-            RejoinUi.muted, true).apply { letterSpacing = .1f })
-        RejoinUi.add(panel, RejoinUi.label(this, snapshot?.ssid ?: "Not connected",
-            19f, RejoinUi.ink, true), 13)
-        RejoinUi.add(panel, RejoinUi.label(this,
-            if (snapshot == null) "Connect to Wi-Fi first"
-            else "We'll remember this router", 12f,
-            if (snapshot == null) RejoinUi.amber else RejoinUi.muted), 8)
-
-        primary.text = when {
-            !permitted -> "Allow Wi-Fi access"
-            snapshot == null -> "Open Wi-Fi settings"
-            else -> "Save this Wi-Fi"
-        }
-        primary.setOnClickListener {
-            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
-                PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 71)
-                return@setOnClickListener
+        content.removeAllViews()
+        progress.removeAllViews()
+        error.visibility = View.GONE
+        val step = step()
+        stepCaption.text = "Step ${step.ordinal + 1} of ${SetupFlow.Step.entries.size}"
+        SetupFlow.Step.entries.forEachIndexed { index, _ ->
+            val bar = View(this).apply {
+                background = RejoinUi.surface(context,
+                    if (index <= step.ordinal) RejoinUi.accent else RejoinUi.line, 2)
             }
-            val wifi = WifiProbe.current(this)
-            if (wifi == null) {
-                startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
-            } else {
-                val result = TrustedNetworks.saveCurrent(this, wifi)
-                if (result != null) {
-                    ActivityHistory.record(this, "Trusted Wi-Fi saved")
-                    render()
-                } else alert("Couldn't save Wi-Fi", "Try again after checking your connection.")
-            }
+            progress.addView(bar, LinearLayout.LayoutParams(0, RejoinUi.dp(this, 3), 1f).apply {
+                if (index > 0) marginStart = RejoinUi.dp(this@SetupActivity, 6)
+            })
         }
-        secondary.text = "I'll do this later"
+        secondary.visibility = View.VISIBLE
+        secondary.text = "Not now"
         secondary.setOnClickListener { deferSetup() }
+        when (step) {
+            SetupFlow.Step.WIFI -> showWifi()
+            SetupFlow.Step.LOGIN -> showLogin()
+            SetupFlow.Step.READY -> showReady()
+        }
     }
 
-    private fun showAccountStage() {
-        stepCaption.text = "STEP 2 OF 3"
-        header.text = "Save your login."
-        helper.text = "Use the username and password from your campus sign-in page."
-
-        val uid = EditText(this).apply {
-            hint = "University username"
-            setSingleLine(true)
-            inputType = InputType.TYPE_CLASS_TEXT
-            setText(CredentialVault.list(this@SetupActivity)
-                .firstOrNull()?.username.orEmpty())
-            setTextColor(RejoinUi.ink)
-            setHintTextColor(RejoinUi.muted)
-            setPadding(RejoinUi.dp(this@SetupActivity, 14),
-                RejoinUi.dp(this@SetupActivity, 14),
-                RejoinUi.dp(this@SetupActivity, 14),
-                RejoinUi.dp(this@SetupActivity, 14))
-            background = RejoinUi.surface(this@SetupActivity, RejoinUi.panel, 13, RejoinUi.line)
-        }
-        val password = EditText(this).apply {
-            hint = "Password"
-            setSingleLine(true)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setTextColor(RejoinUi.ink)
-            setHintTextColor(RejoinUi.muted)
-            setPadding(RejoinUi.dp(this@SetupActivity, 14),
-                RejoinUi.dp(this@SetupActivity, 14),
-                RejoinUi.dp(this@SetupActivity, 14),
-                RejoinUi.dp(this@SetupActivity, 14))
-            background = RejoinUi.surface(this@SetupActivity, RejoinUi.panel, 13, RejoinUi.line)
-        }
-        RejoinUi.add(workArea, uid)
-        RejoinUi.add(workArea, password, 13)
-
-        val disclosure = CheckBox(this).apply {
-            text = "CU uses HTTP. I understand my password may be exposed in transit and allow Rejoin to sign in."
-            textSize = 12f
-            setTextColor(RejoinUi.muted)
-            buttonTintList = android.content.res.ColorStateList.valueOf(RejoinUi.jade)
-            isChecked = getSharedPreferences("profile", MODE_PRIVATE)
-                .getBoolean("http_opt_in", false)
-        }
-        RejoinUi.add(workArea, disclosure, 23)
-
-        primary.text = "Save login"
-        primary.setOnClickListener {
-            val name = uid.text.toString().trim()
-            val secret = password.text.toString()
-            if (name.isBlank() || secret.isBlank()) {
-                alert("Add your login", "Enter both your university username and password.")
-                return@setOnClickListener
+    private fun showWifi() {
+        heading.text = "Save your campus Wi-Fi"
+        val permitted = RejoinUi.hasWifiAccess(this)
+        val locationOn = WifiProbe.locationEnabled(this)
+        val wifi = WifiProbe.current(this)
+        when {
+            !permitted -> {
+                detail.text = "Android needs precise Location permission to show Rejoin which Wi-Fi you’re using."
+                action("Allow Wi-Fi access") { RejoinUi.requestWifiAccess(this, WIFI_PERMISSION) }
             }
-            if (!disclosure.isChecked) {
-                alert("Permission needed",
-                    "Review the campus HTTP warning and choose whether to allow sign-in.")
-                return@setOnClickListener
+            !locationOn -> {
+                detail.text = "Turn on Location so Rejoin can identify your Wi-Fi."
+                action("Open Location settings") { startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
             }
-            val saved = CredentialVault.save(this, name, secret)
-            if (!saved) {
-                alert("Couldn't save login", "Your login wasn't saved. Try again.")
-                return@setOnClickListener
+            wifi == null -> {
+                detail.text = "Join your campus Wi-Fi, then return here to save it."
+                action("Open Wi-Fi settings") { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
             }
-            getSharedPreferences("profile", MODE_PRIVATE)
-                .edit().putBoolean("http_opt_in", true).commit()
-            password.text.clear()
-            ActivityHistory.record(this, "Campus login saved")
-            render()
+            else -> {
+                detail.text = "Rejoin will use your campus login only on Wi-Fi you save."
+                val network = RejoinUi.inset(this)
+                RejoinUi.add(network, RejoinUi.label(this, "Connected Wi-Fi", 14f, RejoinUi.muted))
+                RejoinUi.add(network, RejoinUi.label(this, wifi.ssid, 20f, bold = true), 4)
+                RejoinUi.add(content, network)
+                action("Save this Wi-Fi") {
+                    val current = WifiProbe.current(this)
+                    if (current != wifi) {
+                        render()
+                        showError("Your Wi-Fi changed. Check the network before saving.")
+                    } else if (TrustedNetworks.saveCurrent(this, wifi) == null) {
+                        showError("Couldn’t save this Wi-Fi. Try again.")
+                    } else {
+                        ActivityHistory.record(this, "Trusted Wi-Fi saved")
+                        render()
+                    }
+                }
+            }
         }
-        secondary.text = "I'll do this later"
-        secondary.setOnClickListener { deferSetup() }
     }
 
-    private fun showReadyStage() {
-        stepCaption.text = "STEP 3 OF 3"
-        header.text = "You're all set."
-        helper.text = "Your Wi-Fi and password are saved. Rejoin can take it from here."
-
-        val panel = RejoinUi.inset(this)
-        RejoinUi.add(workArea, panel)
-        val summary = listOf("✓  Wi-Fi saved", "✓  Login saved on this phone")
-        summary.forEachIndexed { index, text ->
-            if (index > 0) RejoinUi.add(panel, RejoinUi.rule(this), 15)
-            RejoinUi.add(panel, RejoinUi.label(this, text, 15f, RejoinUi.ink, true),
-                if (index == 0) 2 else 14)
-        }
-
-        primary.text = "Turn on auto-reconnect"
-        primary.setOnClickListener {
-            val prefs = getSharedPreferences("profile", MODE_PRIVATE)
-            prefs.edit().putBoolean("auto_enabled", true).commit()
-            val scheduled = RecoveryScheduler.schedule(this, 15_000L)
-            if (!scheduled) {
-                prefs.edit().putBoolean("auto_enabled", false).commit()
-                alert("Couldn't enable auto-reconnect",
-                    "You can try again from the home screen.")
-                return@setOnClickListener
+    private fun showLogin() {
+        val alreadySaved = CredentialVault.hasCredentials(this)
+        heading.text = if (alreadySaved) "Allow campus sign-in" else "Save your campus login"
+        detail.text = if (alreadySaved) "Your login is saved on this phone. Review how Rejoin can use it."
+            else "Use the username and password you enter on your campus Wi-Fi sign-in page."
+        val form = LoginForm(this, consentOnly = alreadySaved)
+        RejoinUi.add(content, form.view)
+        action(if (alreadySaved) "Save permission" else "Save login") {
+            if (form.save()) {
+                getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(primary.windowToken, 0)
+                ActivityHistory.record(this, if (alreadySaved) "Campus sign-in allowed" else "Campus login saved")
+                render()
             }
-            RecoveryScheduler.registerWifiEvents(this)
-            ActivityHistory.record(this, "Auto-reconnect enabled")
-            finishSetup()
         }
-        secondary.text = "Use manual mode instead"
+    }
+
+    private fun showReady() {
+        val canSignIn = TrustedNetworks.all(this).any { CredentialVault.hasLoginFor(this, it) }
+        if (!canSignIn) {
+            heading.text = "Choose a saved login"
+            detail.text = "Assign a campus login to your saved Wi-Fi before turning on auto-reconnect."
+            action("Manage saved Wi-Fi") { startActivity(Intent(this, NetworksActivity::class.java)) }
+            return
+        }
+        val enabled = RecoveryPrefs.enabled(this)
+        heading.text = if (enabled) "Auto-reconnect is on" else "Reconnect automatically?"
+        detail.text = if (enabled) "Rejoin can sign you in when your campus Wi-Fi asks again."
+            else "Turn it on to let Rejoin sign you in again when your campus session expires."
+        val summary = RejoinUi.inset(this)
+        RejoinUi.add(summary, RejoinUi.label(this, "Wi-Fi saved", 16f, RejoinUi.success, true))
+        RejoinUi.add(summary, RejoinUi.label(this, "Login saved on this phone", 16f, RejoinUi.success, true), 8)
+        RejoinUi.add(content, summary)
+        secondary.visibility = if (enabled) View.GONE else View.VISIBLE
+        secondary.text = "Keep it off"
         secondary.setOnClickListener { finishSetup() }
+        action(if (enabled) "Done" else "Turn on auto-reconnect") {
+            if (enabled || RecoveryPrefs.enable(this)) finishSetup()
+            else showError("Android couldn’t start background checks. Try again or keep auto-reconnect off.")
+        }
     }
 
-    private fun alert(title: String, detail: String) {
-        AlertDialog.Builder(this).setTitle(title)
-            .setMessage(detail).setPositiveButton("OK", null).show()
+    private fun action(text: String, onTap: () -> Unit) {
+        primary.text = text
+        primary.setOnClickListener { onTap() }
+    }
+
+    private fun showError(message: String) {
+        error.text = message
+        error.visibility = View.VISIBLE
     }
 
     private fun finishSetup() {
-        getSharedPreferences("profile", MODE_PRIVATE).edit()
-            .putBoolean("onboarding_completed", true)
+        prefs.edit().putBoolean("onboarding_completed", true)
             .putBoolean("onboarding_deferred", false).apply()
         finish()
     }
 
     private fun deferSetup() {
-        getSharedPreferences("profile", MODE_PRIVATE).edit()
-            .putBoolean("onboarding_deferred", true).apply()
+        prefs.edit().putBoolean("onboarding_deferred", true).apply()
         finish()
     }
 
     override fun onResume() {
         super.onResume()
-        // A user may come back from Wi-Fi settings with a new connection.
-        if (::workArea.isInitialized && stage() == 1) render()
+        if (step() != SetupFlow.Step.LOGIN) render()
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int,
-        permissions: Array<out String>, results: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, results)
-        if (requestCode == 71) {
-            if (results.firstOrNull() == PackageManager.PERMISSION_GRANTED) render()
-            else alert("Wi-Fi permission needed",
-                "Allow Location access so Rejoin can identify the router you choose.")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>,
+                                            grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == WIFI_PERMISSION) {
+            render()
+            if (!RejoinUi.hasWifiAccess(this)) RejoinUi.explainWifiAccess(this)
         }
+    }
+
+    companion object {
+        private const val WIFI_PERMISSION = 71
     }
 }

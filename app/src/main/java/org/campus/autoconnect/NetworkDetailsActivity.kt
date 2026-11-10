@@ -5,10 +5,7 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
-import android.view.Gravity
 import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 
 /** Exact router identity, friendly label and optional saved-login assignment. */
@@ -27,18 +24,10 @@ class NetworkDetailsActivity : Activity() {
             finish()
             return
         }
-        val scroll = ScrollView(this).apply { setBackgroundColor(RejoinUi.canvas) }
-        val body = RejoinUi.column(this).apply {
-            val side = RejoinUi.dp(this@NetworkDetailsActivity, 24)
-            setPadding(side, side, side, RejoinUi.dp(this@NetworkDetailsActivity, 35))
-        }
-        scroll.addView(body)
-        setContentView(scroll)
-        RejoinUi.applySystemBars(this, scroll)
-        RejoinUi.header(this, body, "Wi-Fi details")
+        val body = RejoinUi.screen(this, "Wi-Fi details")
 
         label = RejoinUi.label(this, "", 26f, RejoinUi.ink, true)
-        RejoinUi.add(body, label, 33)
+        RejoinUi.add(body, label)
         identity = RejoinUi.label(this, "", 13f, RejoinUi.muted)
         RejoinUi.add(body, identity, 8)
         RejoinUi.add(body, RejoinUi.smallAction(this, "Rename") { rename() }, 11)
@@ -55,8 +44,7 @@ class NetworkDetailsActivity : Activity() {
         }, 11)
 
         RejoinUi.add(body, RejoinUi.rule(this), 29)
-        val forget = RejoinUi.navRow(this, "Forget this Wi-Fi",
-            "Stop using this router for automatic login") { confirmRemove() }
+        val forget = RejoinUi.smallAction(this, "Forget this Wi-Fi") { confirmRemove() }
         RejoinUi.add(body, forget, 12)
         refresh()
     }
@@ -67,13 +55,13 @@ class NetworkDetailsActivity : Activity() {
     private fun refresh() {
         val item = find() ?: run { finish(); return }
         label.text = item.label
-        identity.text = item.ssid + "  ·  Saved"
+        identity.text = if (item.label == item.ssid) "Saved Wi-Fi" else item.ssid + " · Saved"
         val accounts = CredentialVault.list(this)
         val selected = if (item.loginId == null) {
             accounts.firstOrNull { it.id == CredentialVault.defaultId(this) }
         } else accounts.firstOrNull { it.id == item.loginId }
         login.text = when {
-            selected != null -> "✓  " + selected.label + " · Saved"
+            selected != null -> selected.label + if (item.loginId == null) " · Default login" else " · Saved"
             item.loginId != null -> "Assigned login missing"
             else -> "Default login not saved yet"
         }
@@ -107,7 +95,7 @@ class NetworkDetailsActivity : Activity() {
         val choices = arrayOf("Use default" + if (default == null) " (not saved yet)" else " · " + default.label) +
             accounts.map { it.label }.toTypedArray()
         val checked = if (profile.loginId == null) 0 else
-            accounts.indexOfFirst { it.id == profile.loginId }.let { if (it < 0) 0 else it + 1 }
+            accounts.indexOfFirst { it.id == profile.loginId }.let { if (it < 0) -1 else it + 1 }
         AlertDialog.Builder(this).setTitle("Login for this Wi-Fi")
             .setSingleChoiceItems(choices, checked) { dialog, which ->
                 val accountId = if (which == 0) null else accounts.getOrNull(which - 1)?.id
@@ -123,7 +111,7 @@ class NetworkDetailsActivity : Activity() {
     private fun confirmRemove() {
         val profile = find() ?: return
         AlertDialog.Builder(this).setTitle("Forget " + profile.label + "?")
-            .setMessage("Rejoin will no longer automatically log in on this Wi-Fi. Your saved account passwords won't be deleted.")
+            .setMessage("Rejoin will no longer automatically log in on this Wi-Fi. You can save this Wi-Fi again from Settings.")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Forget Wi-Fi") { _, _ ->
                 if (TrustedNetworks.remove(this, id)) {
@@ -134,8 +122,9 @@ class NetworkDetailsActivity : Activity() {
                     }
                     ActivityHistory.record(this, "Trusted Wi-Fi removed")
                     finish()
-                }
-            }.show()
+                } else AlertDialog.Builder(this).setMessage("Couldn’t forget this Wi-Fi.")
+                    .setPositiveButton("OK", null).show()
+            }.show().also { RejoinUi.destructive(it) }
     }
 
     override fun onResume() {

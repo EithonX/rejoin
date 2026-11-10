@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.0-beta2
+
+- Separate internet status from auto-reconnect readiness and show the relevant action on Home.
+- Guide setup through Wi-Fi access, saving a login and turning on auto-reconnect.
+- Open the campus sign-in page when a manual reconnect fails.
+- Update the launcher icon, app palette and saved-network and login screens.
+- Add a Gradle wrapper and documented local signing for release APKs.
+
 ## 2.4.0 beta — dark-first interaction redesign
 
 - Replaced the old switch-style auto-recovery interaction with one dedicated screen and explicit Enable / Pause actions.

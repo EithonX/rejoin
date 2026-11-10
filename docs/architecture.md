@@ -1,6 +1,6 @@
 # How Rejoin works
 
-This is the engineering reference for Rejoin 2.2 beta. User-facing setup instructions are in the [README](../README.md).
+Setup and build instructions are in the [README](../README.md).
 
 ## Wi-Fi identity
 

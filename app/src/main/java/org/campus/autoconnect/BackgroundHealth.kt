@@ -58,6 +58,11 @@ object BackgroundHealth {
                 title = "Allow Wi-Fi identification"
                 details = "Rejoin needs Location access to recognize your saved router."
             }
+            !WifiProbe.locationEnabled(context) -> {
+                level = Level.NEEDS_ACTION
+                title = "Location is off"
+                details = "Turn on Location so Rejoin can recognize your saved Wi-Fi."
+            }
             !backgroundLocation -> {
                 level = Level.NEEDS_ACTION
                 title = "Allow background Wi-Fi access"
@@ -71,7 +76,7 @@ object BackgroundHealth {
             !job -> {
                 level = Level.NEEDS_ACTION
                 title = "Background checks need restarting"
-                details = "Open Rejoin settings and enable background protection again."
+                details = "Restart background checks so Android can schedule them again."
             }
             !unrestricted -> {
                 level = Level.NEEDS_ACTION

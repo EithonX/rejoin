@@ -1,39 +1,41 @@
 package org.campus.autoconnect
 
+import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
+import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 
-/**
- * Rejoin visual foundations.
- *
- * Dark-first, restrained contrast and an 8dp spacing rhythm. The mint accent
- * is reserved for actions and positive states, rather than decoration.
- */
 object RejoinUi {
-    val canvas: Int = Color.rgb(11, 16, 21)       // #0B1015
-    val panel: Int = Color.rgb(20, 28, 33)        // #141C21
-    val raised: Int = Color.rgb(27, 37, 43)       // #1B252B
-    val ink: Int = Color.rgb(236, 243, 240)       // #ECF3F0
-    val jade: Int = Color.rgb(117, 220, 180)      // #75DCB4
-    val jadeDeep: Int = Color.rgb(21, 48, 39)     // #153027
-    val mint: Int = Color.rgb(194, 240, 218)      // #C2F0DA
-    val muted: Int = Color.rgb(148, 165, 160)     // #94A5A0
-    val line: Int = Color.rgb(43, 56, 62)         // #2B383E
-    val white: Int = Color.WHITE
-    val amber: Int = Color.rgb(230, 188, 112)    // #E6BC70
-    val rose: Int = Color.rgb(235, 143, 133)     // #EB8F85
+    val canvas = Color.rgb(17, 21, 30)
+    val panel = Color.rgb(26, 33, 48)
+    val raised = Color.rgb(35, 44, 62)
+    val ink = Color.rgb(242, 244, 253)
+    val accent = Color.rgb(189, 201, 255)
+    val muted = Color.rgb(170, 181, 203)
+    val line = Color.rgb(53, 66, 90)
+    val amber = Color.rgb(255, 199, 130)
+    val success = Color.rgb(139, 227, 194)
+    val rose = Color.rgb(255, 173, 169)
 
     fun dp(ctx: Context, px: Int): Int =
         (px * ctx.resources.displayMetrics.density + .5f).toInt()
@@ -51,15 +53,14 @@ object RejoinUi {
             text = value
             textSize = sp
             setTextColor(color)
-            typeface = Typeface.create(if (bold) "sans-serif-medium" else "sans-serif",
-                if (bold) Typeface.BOLD else Typeface.NORMAL)
-            includeFontPadding = false
+            typeface = Typeface.create(if (bold) "sans-serif-medium" else "sans-serif", Typeface.NORMAL)
+            setLineSpacing(dp(ctx, 2).toFloat(), 1f)
         }
 
     fun column(ctx: Context, padding: Int = 0) = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
-        if (padding != 0) setPadding(dp(ctx, padding), dp(ctx, padding),
-            dp(ctx, padding), dp(ctx, padding))
+        val inset = dp(ctx, padding)
+        setPadding(inset, inset, inset, inset)
     }
 
     fun row(ctx: Context) = LinearLayout(ctx).apply {
@@ -67,54 +68,56 @@ object RejoinUi {
         gravity = Gravity.CENTER_VERTICAL
     }
 
-    fun add(parent: LinearLayout, child: View, top: Int = 0,
-            bottom: Int = 0, weight: Float = 0f) {
-        val params = LinearLayout.LayoutParams(
-            if (weight > 0f) 0 else LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT, weight)
-        params.topMargin = dp(parent.context, top)
-        params.bottomMargin = dp(parent.context, bottom)
-        parent.addView(child, params)
+    fun add(parent: LinearLayout, child: View, top: Int = 0, bottom: Int = 0) {
+        parent.addView(child, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(parent.context, top)
+            bottomMargin = dp(parent.context, bottom)
+        })
     }
 
-    fun inset(ctx: Context, color: Int = panel) = column(ctx, 18).apply {
-        background = surface(ctx, color, 17,
-            if (color == panel) line else null)
+    fun inset(ctx: Context, color: Int = panel) = column(ctx, 16).apply {
+        background = surface(ctx, color, 20, if (color == panel) line else null)
+    }
+
+    private fun ripple(ctx: Context, radius: Int, base: Int? = null, border: Int? = null) =
+        RippleDrawable(
+            ColorStateList.valueOf(if (base == accent) 0x3011151E else 0x30BDC9FF),
+            base?.let { surface(ctx, it, radius, border) },
+            surface(ctx, Color.WHITE, radius)
+        )
+
+    private fun button(ctx: Context, value: String, color: Int) = Button(ctx, null, 0).apply {
+        text = value
+        textSize = 15f
+        setTextColor(color)
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        isAllCaps = false
+        gravity = Gravity.CENTER
+        minimumHeight = dp(ctx, 48)
+        minimumWidth = dp(ctx, 48)
+        isFocusable = true
     }
 
     fun action(ctx: Context, value: String, filled: Boolean = true,
-               onClick: () -> Unit): TextView {
-        val base = if (filled) jade else raised
-        val text = if (filled) canvas else ink
-        val drawable = RippleDrawable(
-            ColorStateList.valueOf(if (filled) Color.rgb(165, 244, 211) else line),
-            surface(ctx, base, 13, if (filled) null else line),
-            surface(ctx, Color.WHITE, 13)
-        )
-        return label(ctx, value, 15f, text, true).apply {
-            gravity = Gravity.CENTER
-            minHeight = dp(ctx, 52)
+               onClick: () -> Unit): TextView =
+        button(ctx, value, if (filled) canvas else ink).apply {
+            minimumHeight = dp(ctx, 54)
+            background = ripple(ctx, 16, if (filled) accent else panel, if (filled) null else line)
             setPadding(dp(ctx, 16), dp(ctx, 12), dp(ctx, 16), dp(ctx, 12))
-            background = drawable
-            isClickable = true
-            isFocusable = true
             setOnClickListener { onClick() }
         }
-    }
 
-    fun smallAction(ctx: Context, value: String, onClick: () -> Unit) =
-        label(ctx, value, 13f, jade, true).apply {
-            minHeight = dp(ctx, 42)
-            gravity = Gravity.CENTER_VERTICAL
+    fun smallAction(ctx: Context, value: String, onClick: () -> Unit): TextView =
+        button(ctx, value, accent).apply {
+            background = ripple(ctx, 12)
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
             setPadding(dp(ctx, 8), dp(ctx, 8), dp(ctx, 8), dp(ctx, 8))
-            isClickable = true
-            isFocusable = true
             setOnClickListener { onClick() }
         }
 
     fun rule(ctx: Context) = View(ctx).apply {
+        minimumHeight = dp(ctx, 1)
         setBackgroundColor(line)
-        layoutParams = LinearLayout.LayoutParams(-1, dp(ctx, 1))
     }
 
     fun icon(ctx: Context, id: Int, size: Int, tint: Int? = null): ImageView =
@@ -122,83 +125,160 @@ object RejoinUi {
             setImageResource(id)
             if (tint != null) imageTintList = ColorStateList.valueOf(tint)
             scaleType = ImageView.ScaleType.FIT_CENTER
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             layoutParams = LinearLayout.LayoutParams(dp(ctx, size), dp(ctx, size))
         }
 
-    fun applySystemBars(activity: Activity, view: View) {
-        activity.window.statusBarColor = canvas
-        activity.window.navigationBarColor = canvas
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // No LIGHT_STATUS_BAR or LIGHT_NAVIGATION_BAR: light symbols on dark.
-            @Suppress("DEPRECATION")
-            activity.window.decorView.systemUiVisibility = 0
+    fun iconAction(ctx: Context, id: Int, description: String, onClick: () -> Unit) =
+        icon(ctx, id, 48, ink).apply {
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            val padding = dp(ctx, 12)
+            setPadding(padding, padding, padding, padding)
+            background = ripple(ctx, 14)
+            contentDescription = description
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isFocusable = true
+            setOnClickListener { onClick() }
+            accessibilityDelegate = buttonSemantics
         }
+
+    fun applySystemBars(activity: Activity, view: View) {
         if (Build.VERSION.SDK_INT >= 30) {
+            @Suppress("DEPRECATION")
+            activity.window.setDecorFitsSystemWindows(false)
             view.setOnApplyWindowInsetsListener { v, insets ->
-                val bars = insets.getInsets(WindowInsets.Type.systemBars())
-                v.setPadding(0, bars.top, 0, bars.bottom)
+                val safe = insets.getInsets(WindowInsets.Type.systemBars() or
+                    WindowInsets.Type.displayCutout() or WindowInsets.Type.ime())
+                v.setPadding(safe.left, safe.top, safe.right, safe.bottom)
                 insets
             }
+            view.requestApplyInsets()
         } else {
             view.fitsSystemWindows = true
         }
     }
 
-    fun header(ctx: Activity, parent: LinearLayout,
-               title: String, subtitle: String? = null) {
-        val bar = row(ctx)
-        val back = ImageView(ctx).apply {
-            setImageResource(R.drawable.ic_arrow_back)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(ctx, 12), dp(ctx, 12), dp(ctx, 12), dp(ctx, 12))
-            background = RippleDrawable(ColorStateList.valueOf(raised), null,
-                surface(ctx, Color.WHITE, 12))
-            contentDescription = "Go back"
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { ctx.finish() }
+    fun screen(activity: Activity, title: String): LinearLayout {
+        val page = column(activity).apply { setBackgroundColor(canvas) }
+        val top = column(activity).apply {
+            setPadding(dp(activity, 12), dp(activity, 4), dp(activity, 16), dp(activity, 4))
         }
-        bar.addView(back, LinearLayout.LayoutParams(dp(ctx, 48), dp(ctx, 48)))
-        bar.addView(label(ctx, title, 24f, ink, true),
-            LinearLayout.LayoutParams(0, -2, 1f).apply {
-                leftMargin = dp(ctx, 12)
-            })
-        add(parent, bar)
-        if (subtitle != null) add(parent, label(ctx, subtitle, 13f, muted), 13)
+        header(activity, top, title)
+        add(page, top)
+        val body = scrollBody(page)
+        activity.setContentView(page)
+        applySystemBars(activity, page)
+        return body
     }
 
-    fun section(parent: LinearLayout, text: String, marginTop: Int = 28) {
-        add(parent, label(parent.context, text.uppercase(), 11f, muted, true)
-            .apply { letterSpacing = .12f }, marginTop)
+    fun scrollBody(parent: LinearLayout): LinearLayout {
+        val ctx = parent.context
+        val body = column(ctx).apply {
+            setPadding(dp(ctx, 24), dp(ctx, 16), dp(ctx, 24), dp(ctx, 24))
+            isFocusableInTouchMode = true
+        }
+        val scroll = ScrollView(ctx).apply {
+            addView(body)
+            isFillViewport = true
+        }
+        parent.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        return body
+    }
+
+    fun footer(parent: LinearLayout) = column(parent.context).apply {
+        val side = dp(context, 24)
+        setPadding(side, dp(context, 8), side, dp(context, 12))
+        add(parent, this)
+    }
+
+    fun header(ctx: Activity, parent: LinearLayout, title: String) {
+        val bar = row(ctx)
+        bar.addView(iconAction(ctx, R.drawable.ic_arrow_back, "Go back") { ctx.finish() })
+        bar.addView(label(ctx, title, 22f, ink, true).apply { heading(this) },
+            LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(ctx, 8) })
+        add(parent, bar)
+    }
+
+    fun heading(view: View) {
+        if (Build.VERSION.SDK_INT >= 28) view.isAccessibilityHeading = true
+    }
+
+    fun section(parent: LinearLayout, text: String, marginTop: Int = 24) {
+        add(parent, label(parent.context, text, 14f, muted, true).apply { heading(this) }, marginTop)
     }
 
     fun navRow(ctx: Context, heading: String, detail: String,
-               iconId: Int? = null, onTap: () -> Unit): LinearLayout {
-        val content = row(ctx).apply {
-            setPadding(dp(ctx, 4), dp(ctx, 15), dp(ctx, 4), dp(ctx, 15))
-            minimumHeight = dp(ctx, 68)
-            isClickable = true
+               iconId: Int? = null, onTap: () -> Unit): LinearLayout =
+        row(ctx).apply {
+            setPadding(dp(ctx, 8), dp(ctx, 12), dp(ctx, 8), dp(ctx, 12))
+            minimumHeight = dp(ctx, 64)
             isFocusable = true
             contentDescription = if (detail.isBlank()) heading else "$heading, $detail"
-            background = RippleDrawable(
-                ColorStateList.valueOf(raised), null, surface(ctx, Color.WHITE, 10))
+            background = ripple(ctx, 12)
+            accessibilityDelegate = buttonSemantics
             setOnClickListener { onTap() }
+            if (iconId != null) {
+                val leading = icon(ctx, iconId, 24, muted)
+                addView(leading, LinearLayout.LayoutParams(dp(ctx, 24), dp(ctx, 24))
+                    .apply { marginEnd = dp(ctx, 16) })
+            }
+            val stack = column(ctx).apply {
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            }
+            addView(stack, LinearLayout.LayoutParams(0, -2, 1f))
+            add(stack, label(ctx, heading, 16f, ink, true))
+            if (detail.isNotBlank()) add(stack, label(ctx, detail, 14f, muted), 2)
+            addView(icon(ctx, R.drawable.ic_chevron_right, 20, muted),
+                LinearLayout.LayoutParams(dp(ctx, 20), dp(ctx, 20)).apply { marginStart = dp(ctx, 8) })
         }
-        if (iconId != null) {
-            val leading = icon(ctx, iconId, 24)
-            content.addView(leading, LinearLayout.LayoutParams(dp(ctx, 24), dp(ctx, 24))
-                .apply { rightMargin = dp(ctx, 15) })
+
+    private val buttonSemantics = object : View.AccessibilityDelegate() {
+        override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+            super.onInitializeAccessibilityNodeInfo(host, info)
+            info.className = Button::class.java.name
         }
-        val stack = column(ctx)
-        content.addView(stack, LinearLayout.LayoutParams(0, -2, 1f))
-        add(stack, label(ctx, heading, 15f, ink, true))
-        if (detail.isNotBlank()) {
-            add(stack, label(ctx, detail, 12f, muted).apply { maxLines = 2 }, 7)
+    }
+
+    fun hasWifiAccess(ctx: Context): Boolean =
+        ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    fun requestWifiAccess(activity: Activity, requestCode: Int) {
+        activity.requestPermissions(arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION
+        ), requestCode)
+    }
+
+    fun openAppSettings(activity: Activity) {
+        activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", activity.packageName, null)))
+    }
+
+    fun explainWifiAccess(activity: Activity) {
+        AlertDialog.Builder(activity)
+            .setTitle("Allow precise Location")
+            .setMessage("Android uses Location permission to let Rejoin identify your Wi-Fi. Open Permissions → Location and turn on precise location.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Open app settings") { _, _ -> openAppSettings(activity) }
+            .show()
+    }
+
+    fun openCampusSignIn(activity: Activity) {
+        val error = if (!LiveSessionTest.selectedWifiMatches(activity)) {
+            "Connect to a saved campus Wi-Fi first."
+        } else {
+            try {
+                activity.startActivity(Intent(Intent.ACTION_VIEW,
+                    Uri.parse("http://172.16.2.1:1000/login?")))
+                return
+            } catch (_: ActivityNotFoundException) {
+                "Install or enable a browser to open the campus sign-in page."
+            }
         }
-        val arrow = icon(ctx, R.drawable.ic_chevron_right, 21)
-        content.addView(arrow, LinearLayout.LayoutParams(dp(ctx, 24), dp(ctx, 24)).apply {
-            leftMargin = dp(ctx, 12)
-        })
-        return content
+        AlertDialog.Builder(activity).setTitle("Campus sign-in")
+            .setMessage(error).setPositiveButton("OK", null).show()
+    }
+
+    fun destructive(dialog: AlertDialog) {
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(rose)
     }
 }

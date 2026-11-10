@@ -2,13 +2,7 @@ package org.campus.autoconnect
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
-import android.view.View
-import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.ScrollView
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -19,18 +13,8 @@ class DiagnosticsActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val page = ScrollView(this).apply { setBackgroundColor(RejoinUi.canvas) }
-        val body = RejoinUi.column(this).apply {
-            val side = RejoinUi.dp(this@DiagnosticsActivity, 24)
-            setPadding(side, side, side, RejoinUi.dp(this@DiagnosticsActivity, 35))
-        }
-        page.addView(body)
-        setContentView(page)
-        RejoinUi.applySystemBars(this, page)
-        RejoinUi.header(this, body, "Troubleshooting",
-            "Only use these when Rejoin needs a hand.")
-
-        RejoinUi.section(body, "Connection", 27)
+        val body = RejoinUi.screen(this, "Troubleshooting")
+        RejoinUi.section(body, "Connection", 0)
         val connection = RejoinUi.inset(this)
         RejoinUi.add(body, connection, 12)
         connection.addView(RejoinUi.navRow(this, "Check internet",
@@ -40,7 +24,7 @@ class DiagnosticsActivity : Activity() {
             "Use the login saved for this Wi-Fi") { confirmSignIn() })
         RejoinUi.add(connection, RejoinUi.rule(this), 2)
         connection.addView(RejoinUi.navRow(this, "Open campus sign-in",
-            "Use the browser instead") { openPortal() })
+            "Use the browser instead") { RejoinUi.openCampusSignIn(this) })
 
         RejoinUi.section(body, "Advanced", 30)
         val advanced = RejoinUi.inset(this)
@@ -59,15 +43,6 @@ class DiagnosticsActivity : Activity() {
             .setPositiveButton("Try sign-in") { _, _ -> test("login") }.show()
     }
 
-    private fun openPortal() {
-        if (!LiveSessionTest.selectedWifiMatches(this)) {
-            message("Saved Wi-Fi needed", "Connect to a trusted Wi-Fi first.")
-            return
-        }
-        startActivity(Intent(Intent.ACTION_VIEW,
-            Uri.parse("http://172.16.2.1:1000/login?")))
-    }
-
     private fun confirmLogout() {
         AlertDialog.Builder(this).setTitle("Log out shared Wi-Fi?")
             .setMessage("Other devices connected to the same router may lose internet.")
@@ -77,7 +52,7 @@ class DiagnosticsActivity : Activity() {
                     .putLong("manual_test_until", System.currentTimeMillis() + 600_000L)
                     .commit()
                 test("logout")
-            }.show()
+            }.show().also { RejoinUi.destructive(it) }
     }
 
     private fun confirmErase() {
@@ -91,7 +66,7 @@ class DiagnosticsActivity : Activity() {
                 CredentialVault.clear(this)
                 ActivityHistory.record(this, "Saved logins erased")
                 message("Saved logins erased", "You can set them up again whenever you're ready.")
-            }.show()
+            }.show().also { RejoinUi.destructive(it) }
     }
 
     private fun test(kind: String) {
@@ -105,7 +80,7 @@ class DiagnosticsActivity : Activity() {
             val result = try {
                 when (kind) {
                     "login" -> SessionEngine.run(applicationContext, userInitiated = true,
-                        explicitlyLoggedOut = true)
+                        explicitlyLoggedOut = true).message
                     "logout" -> LiveSessionTest.logout(applicationContext)
                     else -> InternetVerifier.check(applicationContext).let {
                         it.state.name + ": " + it.details

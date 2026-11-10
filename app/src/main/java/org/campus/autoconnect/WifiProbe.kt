@@ -3,6 +3,7 @@ package org.campus.autoconnect
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -75,6 +76,13 @@ object WifiProbe {
         val ssid = normalize(info.ssid) ?: return null
         if (!validBssid(info.bssid)) return null
         return Snapshot(wifiNetworks.single(), ssid, info.bssid)
+    }
+
+    fun locationEnabled(ctx: Context): Boolean {
+        val location = ctx.getSystemService(LocationManager::class.java)
+        return if (Build.VERSION.SDK_INT >= 28) location.isLocationEnabled
+        else location.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+            location.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
     }
 
     fun trust(context: Context, snapshot: Snapshot) {

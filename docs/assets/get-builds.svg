@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 166 42" width="166" height="42">
+  <rect width="166" height="42" rx="11" fill="#bdc9ff"/>
+  <path d="M22 12v12m-5-5 5 5 5-5m-11 9h12" fill="none" stroke="#11151e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="38" y="27" fill="#11151e" font-family="system-ui, Segoe UI, sans-serif" font-size="16" font-weight="650">Get beta builds</text>
+</svg>

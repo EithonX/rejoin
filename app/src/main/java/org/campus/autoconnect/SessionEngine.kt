@@ -5,11 +5,8 @@ import android.net.Network
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 
-/**
- * Single flight, conservative recovery of a user-authorized captive-portal
- * session. Keeps the verified FortinetLoginV2 form implementation unchanged.
- */
 object SessionEngine {
+    data class Result(val message: String, val outcome: RecoveryPolicy.Outcome, val busy: Boolean = false)
     private val running = AtomicBoolean(false)
     private const val COOLDOWN_MS = 20 * 60_000L
 
@@ -18,14 +15,18 @@ object SessionEngine {
         userInitiated: Boolean = false,
         explicitlyLoggedOut: Boolean = false,
         progress: (String) -> Unit = {},
-        requiredNetwork: Network? = null
-    ): String {
-        if (!running.compareAndSet(false, true)) return "Another connection check is running"
+        requiredNetwork: Network? = null,
+        requiredProfileId: String? = null
+    ): Result {
+        if (!running.compareAndSet(false, true)) {
+            return Result("Another connection check is running", RecoveryPolicy.Outcome.UNKNOWN, busy = true)
+        }
         val prefs = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         var checkedProfileId: String? = null
 
-        fun finish(message: String): String {
+        fun finish(message: String): Result {
+            val outcome = RecoveryPolicy.fromMessage(message)
             val event = when {
                 message.contains("VERIFIED", true) ||
                     message.contains("restored", true) -> "Internet restored"
@@ -40,7 +41,7 @@ object SessionEngine {
                 .putString("last_result", message)
                 .putString("last_profile_id", checkedProfileId)
                 .putLong("last_checked", System.currentTimeMillis())
-                .putString("last_class", when (RecoveryPolicy.fromMessage(message)) {
+                .putString("last_class", when (outcome) {
                     RecoveryPolicy.Outcome.HEALTHY -> "healthy"
                     RecoveryPolicy.Outcome.RECOVERED -> "restored"
                     RecoveryPolicy.Outcome.PORTAL -> "portal"
@@ -49,7 +50,7 @@ object SessionEngine {
                 })
                 .apply()
             if (event != null) ActivityHistory.record(context, event)
-            return message
+            return Result(message, outcome)
         }
 
         try {
@@ -62,6 +63,9 @@ object SessionEngine {
                 ?: return finish("Trusted Wi-Fi identity unavailable; check background location access")
             val trusted = TrustedNetworks.find(context, snapshot)
                 ?: return finish("Not a trusted Wi-Fi; no request sent")
+            if (requiredProfileId != null && trusted.id != requiredProfileId) {
+                return finish("Trusted Wi-Fi changed; login cancelled")
+            }
             checkedProfileId = trusted.id
 
             progress("Checking Wi-Fi access")
@@ -101,6 +105,7 @@ object SessionEngine {
             val account = CredentialVault.resolve(context, trusted)
                 ?: return finish("Saved login unavailable for " + trusted.label)
             if (!userInitiated) {
+                if (!RecoveryPrefs.enabled(context)) return finish("Automatic recovery disabled")
                 prefs.edit().putLong("next_allowed_" + trusted.id, System.currentTimeMillis() + COOLDOWN_MS)
                     .commit()
             }

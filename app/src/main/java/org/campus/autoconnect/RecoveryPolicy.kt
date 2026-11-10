@@ -46,6 +46,19 @@ object RecoveryPolicy {
 object RecoveryPrefs {
     fun enabled(context: Context): Boolean = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
         .getBoolean("auto_enabled", false)
+    fun enable(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
+        val wasEnabled = enabled(context)
+        if (!prefs.edit().putBoolean("auto_enabled", true).commit()) return false
+        if (!RecoveryScheduler.schedule(context, 15_000L)) {
+            prefs.edit().putBoolean("auto_enabled", wasEnabled).commit()
+            return false
+        }
+        RecoveryScheduler.registerWifiEvents(context)
+        if (!wasEnabled) ActivityHistory.record(context, "Auto-reconnect enabled")
+        return true
+    }
+
     fun mode(context: Context): RecoveryPolicy.Mode = RecoveryPolicy.selectedMode(
         context.getSharedPreferences("profile", Context.MODE_PRIVATE).getString("recovery_mode", "balanced")
     )
