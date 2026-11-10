@@ -22,6 +22,8 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".SetupActivity" android:exported="false" />
+        <activity android:name=".NetworksActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".ActivityLogActivity" android:exported="false" />
         <activity android:name=".LoginsActivity" android:exported="false" />
