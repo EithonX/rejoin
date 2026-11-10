@@ -180,6 +180,14 @@ class MainActivity : Activity() {
         activityText = RejoinUi.label(this, "", 12f, RejoinUi.muted)
         RejoinUi.add(body, activityText, 13)
         render()
+        val prefs = getSharedPreferences("profile", MODE_PRIVATE)
+        val setUp = TrustedNetworks.all(this).isNotEmpty() && CredentialVault.hasCredentials(this)
+        if (setUp) prefs.edit().putBoolean("onboarding_completed", true).apply()
+        if (savedInstanceState == null && !setUp &&
+            !prefs.getBoolean("onboarding_completed", false) &&
+            !prefs.getBoolean("onboarding_deferred", false)) {
+            startActivity(Intent(this, SetupActivity::class.java))
+        }
     }
 
     private fun openSettings() {
@@ -325,7 +333,7 @@ class MainActivity : Activity() {
                 headline.text = "Wi-Fi, handled."
                 explanation.text = "Save your campus Wi-Fi and login once."
                 primary = "Get started"
-                action = { openSettings() }
+                action = { startActivity(Intent(this, SetupActivity::class.java)) }
             }
             current == null -> {
                 stateMark.kind = ConnectionMark.Kind.IDLE
@@ -339,7 +347,7 @@ class MainActivity : Activity() {
                 headline.text = "Login not saved."
                 explanation.text = "Add an account for this network."
                 primary = "Save login"
-                action = { startActivity(Intent(this, LoginsActivity::class.java)) }
+                action = { startActivity(Intent(this, SetupActivity::class.java)) }
             }
             state == InternetVerifier.State.ONLINE -> {
                 stateMark.kind = ConnectionMark.Kind.ONLINE
