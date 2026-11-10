@@ -21,8 +21,7 @@ class SettingsActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var networksRow: LinearLayout
     private lateinit var accountsRow: LinearLayout
-    private lateinit var paceRow: LinearLayout
-    private lateinit var backgroundRow: LinearLayout
+    private lateinit var protectionRow: LinearLayout
     private lateinit var advancedBody: LinearLayout
     private lateinit var advancedToggle: TextView
     private lateinit var setupCaption: TextView
@@ -47,7 +46,7 @@ class SettingsActivity : Activity() {
         setupCaption = RejoinUi.label(this, "", 13f, RejoinUi.muted)
         RejoinUi.add(body, setupCaption, 17)
 
-        RejoinUi.section(body, "Your setup", 29)
+        RejoinUi.section(body, "Networks & accounts", 29)
         val setupGroup = RejoinUi.inset(this)
         RejoinUi.add(body, setupGroup, 12)
         networksRow = RejoinUi.column(this)
@@ -56,20 +55,17 @@ class SettingsActivity : Activity() {
         RejoinUi.add(setupGroup, RejoinUi.rule(this), 4)
         RejoinUi.add(setupGroup, accountsRow)
 
-        RejoinUi.section(body, "Automatic recovery", 29)
+        RejoinUi.section(body, "Connection", 29)
         val recoveryGroup = RejoinUi.inset(this)
         RejoinUi.add(body, recoveryGroup, 12)
-        paceRow = RejoinUi.column(this)
-        backgroundRow = RejoinUi.column(this)
-        RejoinUi.add(recoveryGroup, paceRow)
-        RejoinUi.add(recoveryGroup, RejoinUi.rule(this), 4)
-        RejoinUi.add(recoveryGroup, backgroundRow)
+        protectionRow = RejoinUi.column(this)
+        RejoinUi.add(recoveryGroup, protectionRow)
 
         RejoinUi.section(body, "More", 29)
         val moreGroup = RejoinUi.inset(this)
         RejoinUi.add(body, moreGroup, 12)
         RejoinUi.add(moreGroup, RejoinUi.navRow(this,
-            "Activity", "Connection events on this phone") {
+            "Activity", "Recent connection events") {
             startActivity(Intent(this, ActivityLogActivity::class.java))
         })
         RejoinUi.add(moreGroup, RejoinUi.rule(this), 4)
@@ -77,7 +73,7 @@ class SettingsActivity : Activity() {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/EithonX")))
         })
 
-        RejoinUi.section(body, "Support", 29)
+        RejoinUi.section(body, "Troubleshooting", 29)
         val tools = RejoinUi.inset(this)
         RejoinUi.add(body, tools, 12)
         advancedToggle = RejoinUi.smallAction(this, "Troubleshooting  +") {
@@ -120,13 +116,12 @@ class SettingsActivity : Activity() {
         if (!::networksRow.isInitialized) return
         networksRow.removeAllViews()
         accountsRow.removeAllViews()
-        paceRow.removeAllViews()
-        backgroundRow.removeAllViews()
+        protectionRow.removeAllViews()
         val profiles = TrustedNetworks.all(this)
         val logins = CredentialVault.list(this)
         setupCaption.text = if (profiles.isEmpty() || logins.isEmpty())
-            "Finish setup to let Rejoin connect automatically."
-        else "Your networks and logins are saved on this phone."
+            "Just two things to get started: Wi-Fi and a login."
+        else "Your saved networks and logins."
 
         networksRow.addView(RejoinUi.navRow(this, "Trusted Wi-Fi",
             when (profiles.size) {
@@ -144,59 +139,16 @@ class SettingsActivity : Activity() {
             }) {
             startActivity(Intent(this, LoginsActivity::class.java))
         })
-        val current = if (RecoveryPrefs.mode(this) == RecoveryPolicy.Mode.BALANCED)
-            "Balanced" else "Responsive"
-        paceRow.addView(RejoinUi.navRow(this, "Recovery pace", current) {
-            choosePace()
-        })
         val health = BackgroundHealth.inspect(this)
-        backgroundRow.addView(RejoinUi.navRow(this, "Background access",
-            when (health.level) {
-                BackgroundHealth.Level.READY -> "Ready"
-                BackgroundHealth.Level.PAUSED -> "Auto-reconnect is off"
-                BackgroundHealth.Level.NEEDS_ACTION -> "Needs attention"
-            }) {
-            showBackgroundHelp()
-        })
-    }
-
-    private fun choosePace() {
-        val modes = arrayOf("Balanced · fewer background checks",
-            "Responsive · more frequent checks")
-        val current = if (RecoveryPrefs.mode(this) == RecoveryPolicy.Mode.BALANCED) 0 else 1
-        AlertDialog.Builder(this).setTitle("Recovery pace")
-            .setSingleChoiceItems(modes, current) { dialog, selected ->
-                val mode = if (selected == 0) "balanced" else "responsive"
-                getSharedPreferences("profile", MODE_PRIVATE).edit()
-                    .putString("recovery_mode", mode).commit()
-                if (RecoveryPrefs.enabled(this)) RecoveryScheduler.schedulePeriodic(this)
-                dialog.dismiss()
-                refresh()
-            }
-            .setNegativeButton("Cancel", null).show()
-    }
-
-    private fun showBackgroundHelp() {
-        val health = BackgroundHealth.inspect(this)
-        val last = if (health.lastRun > 0)
-            "\n\nLast background check: " +
-                DateFormat.getDateTimeInstance(DateFormat.SHORT,
-                    DateFormat.SHORT).format(Date(health.lastRun))
-        else "\n\nNo completed background check recorded yet."
-        val detail = when {
-            !health.backgroundLocation ->
-                "Rejoin needs Location access set to 'Allow all the time' to identify saved Wi-Fi while the app is closed."
-            health.restricted || !health.batteryUnrestricted ->
-                "Your phone may delay Rejoin in the background. Check Battery settings for Rejoin and allow background activity. On Motorola, look for 'Always allow' if available."
-            else -> "Android schedules Rejoin's background checks. Deep sleep can still delay the next check."
+        val protectionSummary = when (health.level) {
+            BackgroundHealth.Level.READY -> "On"
+            BackgroundHealth.Level.PAUSED -> "Off"
+            BackgroundHealth.Level.NEEDS_ACTION -> "On · needs attention"
         }
-        AlertDialog.Builder(this).setTitle(health.title)
-            .setMessage(detail + last)
-            .setNegativeButton("Close", null)
-            .setPositiveButton("App settings") { _, _ ->
-                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:" + packageName)))
-            }.show()
+        protectionRow.addView(RejoinUi.navRow(this,
+            "Auto-reconnect", protectionSummary) {
+            startActivity(Intent(this, ProtectionActivity::class.java))
+        })
     }
 
     private fun confirmLogin() {
