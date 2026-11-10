@@ -21,7 +21,12 @@ class ProbeJobService : JobService() {
         val thread = Thread({
             val result = try {
                 val network = if (Build.VERSION.SDK_INT >= 28) params.network else null
-                SessionEngine.run(applicationContext, requiredNetwork = network)
+                if (params.jobId == RecoveryScheduler.EVENT_JOB_ID) {
+                    val wifi = RecoveryScheduler.eventCandidate(applicationContext, network)
+                    wifi?.let { SessionEngine.run(applicationContext, requiredNetwork = it.network) }
+                } else {
+                    SessionEngine.run(applicationContext, requiredNetwork = network)
+                }
             } catch (_: RuntimeException) {
                 SessionEngine.Result("Background check couldn’t finish", RecoveryPolicy.Outcome.FAILED)
             }
@@ -29,14 +34,14 @@ class ProbeJobService : JobService() {
             main.post {
                 if (jobs[params.jobId] !== completed) return@post
                 jobs.remove(params.jobId)
-                if (!result.busy) {
-                    prefs.edit()
-                        .putLong("background_last_finished", System.currentTimeMillis())
+                val update = prefs.edit().putString("background_state", "finished")
+                if (result != null && !result.busy) {
+                    update.putLong("background_last_finished", System.currentTimeMillis())
                         .putString("background_last_result", result.message.take(220))
                         .putInt("background_job_id", params.jobId)
-                        .putString("background_state", "finished")
-                        .apply()
                 }
+                update.apply()
+                RecoveryScheduler.rearmAfterCheck(applicationContext)
                 jobFinished(params, false)
             }
         }, "Rejoin-background-check")

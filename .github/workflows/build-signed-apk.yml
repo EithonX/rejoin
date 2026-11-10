@@ -130,7 +130,14 @@ jobs:
             fi
           fi
           flags=()
-          if [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
+          if [[ "$VERSION" == *-* ]]; then
+            notes="Test build for Chandigarh University Wi-Fi.
+
+          > [!WARNING]
+          > The campus portal uses unencrypted HTTP. Anyone who can intercept that traffic can read your credentials during sign-in.
+          > Rejoin encrypts the saved copy on your phone and asks you to opt in before sending it."
+            flags+=(--prerelease --notes "$notes")
+          fi
           gh release create "$RELEASE_TAG" dist/Rejoin.apk dist/Rejoin.apk.sha256 dist/rejoin-update.json \
             --repo "$GITHUB_REPOSITORY" --verify-tag --title "Rejoin $VERSION" \
             --generate-notes "${flags[@]}"
