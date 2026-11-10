@@ -8,17 +8,19 @@ Rejoin is meant to be configured once and mostly forgotten. It checks the select
 
 ## Use it
 
-1. Connect to a router you own or have permission to use.
-2. Open **Settings → Trusted Wi-Fi → Add the Wi-Fi I'm using**.
-3. Open **Saved logins → Manage saved logins** and save your campus account. The app confirms **Password saved on this device**.
-4. Return home and enable **Automatic recovery**. The default **Balanced** mode conserves battery.
-5. If Android withholds Wi-Fi identity in the background, review Rejoin's location permission from Settings.
+1. Open Rejoin. First-time users get a short three-step setup: **save the current Wi-Fi, save your login, and opt into auto-reconnect**.
+2. A saved password is confirmed clearly; it is never displayed again.
+3. Rejoin's Home screen shows the current connection state and only the relevant next action.
+4. Change auto-reconnect on its own screen: **Enable auto-reconnect**, or **Pause** with confirmation. No ambiguous toggle.
+5. If Android restricts background Wi-Fi checks, open **Settings → Auto-reconnect → Background access** to review the reason.
+
+Existing users with saved Wi-Fi and credentials skip first-run setup. If you leave setup partway through, it resumes at the remaining step; choosing **Not now** doesn't force setup again at every launch.
 
 That's it. For most people, **one saved Wi-Fi and one saved login** are all that's needed.
 
 ### Optional: more than one Wi-Fi or login
 
-You can save up to 32 exact Wi-Fi access points, and up to 16 encrypted logins. Every Wi-Fi automatically uses your default login. For a particular router, open **Settings → Trusted Wi-Fi → Manage → Choose saved login** to override that default. An explicitly assigned account isn't silently replaced if it's missing; removing a linked account asks for confirmation and returns those routers to the default login.
+You can save up to 32 exact Wi-Fi access points, and up to 16 encrypted logins. Every Wi-Fi automatically uses your default login. For a particular router, open **Settings → Trusted Wi-Fi → Wi-Fi details → Change login** to override that default. An explicitly assigned account isn't silently replaced if it's missing; removing a linked account asks for confirmation and returns those routers to the default login.
 
 Saving a new Wi-Fi requires connecting to it first. Rejoin matches both SSID and BSSID. It does **not** trust every access point merely because it broadcasts the same network name.
 
@@ -58,7 +60,10 @@ Download `Rejoin-debug-apk` from the most recent successful [Actions run](https:
 
 ## Project layout
 
-- `MainActivity`: connection-first home screen
+- `MainActivity`: connection-first dark home screen with one contextual action
+- `SetupActivity`: resumable three-step Wi-Fi and login setup
+- `ProtectionActivity`: explicit auto-reconnect control, background access and check frequency
+- `DiagnosticsActivity`: separate user-initiated network tests
 - `SettingsActivity`, `NetworkDetailsActivity`, `LoginsActivity`: profile and account management
 - `TrustedNetworks`: trusted access points and optional account assignments
 - `CredentialVault`: encrypted logins with migration from the v1 single-credential format

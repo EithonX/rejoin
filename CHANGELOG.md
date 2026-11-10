@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.0 beta — dark-first interaction redesign
+
+- Replaced the old switch-style auto-recovery interaction with one dedicated screen and explicit Enable / Pause actions.
+- Switched all activities and Android dialogs to a consistent dark palette.
+- Added a native connection-state glyph and simplified Home to one primary decision.
+- Added fast, resumable three-step onboarding; previously configured users skip it automatically.
+- Reworked Settings navigation with vector back controls and consistently sized touch targets.
+- Moved diagnostic network actions out of Settings into a separate troubleshooting screen.
+- Made saved-login management one tappable row per account with contextual actions.
+- Preserved the verified FortiGate login adapter, account vault and Android-managed recovery scheduler.
+
+
 ## 2.2.0 beta — background reliability and focused home
 
 - Replaced a fragile chain of one-shot maintenance jobs with a persistent Android periodic job and a separate Wi-Fi-available check.
