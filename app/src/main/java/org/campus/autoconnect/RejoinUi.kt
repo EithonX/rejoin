@@ -173,7 +173,7 @@ object RejoinUi {
     }
 
     fun navRow(ctx: Context, heading: String, detail: String,
-               onTap: () -> Unit): LinearLayout {
+               iconId: Int? = null, onTap: () -> Unit): LinearLayout {
         val content = row(ctx).apply {
             setPadding(dp(ctx, 4), dp(ctx, 15), dp(ctx, 4), dp(ctx, 15))
             minimumHeight = dp(ctx, 68)
@@ -183,6 +183,11 @@ object RejoinUi {
             background = RippleDrawable(
                 ColorStateList.valueOf(raised), null, surface(ctx, Color.WHITE, 10))
             setOnClickListener { onTap() }
+        }
+        if (iconId != null) {
+            val leading = icon(ctx, iconId, 24)
+            content.addView(leading, LinearLayout.LayoutParams(dp(ctx, 24), dp(ctx, 24))
+                .apply { rightMargin = dp(ctx, 15) })
         }
         val stack = column(ctx)
         content.addView(stack, LinearLayout.LayoutParams(0, -2, 1f))
