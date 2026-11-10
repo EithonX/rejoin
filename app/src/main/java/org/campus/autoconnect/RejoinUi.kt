@@ -147,17 +147,24 @@ object RejoinUi {
     fun header(ctx: Activity, parent: LinearLayout,
                title: String, subtitle: String? = null) {
         val bar = row(ctx)
-        val back = smallAction(ctx, "‹") { ctx.finish() }.apply {
-            gravity = Gravity.CENTER
-            textSize = 29f
-            contentDescription = "Back"
+        val back = ImageView(ctx).apply {
+            setImageResource(R.drawable.ic_arrow_back)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(ctx, 12), dp(ctx, 12), dp(ctx, 12), dp(ctx, 12))
+            background = RippleDrawable(ColorStateList.valueOf(raised), null,
+                surface(ctx, Color.WHITE, 12))
+            contentDescription = "Go back"
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { ctx.finish() }
         }
-        bar.addView(back, LinearLayout.LayoutParams(dp(ctx, 40), dp(ctx, 46)))
-        bar.addView(label(ctx, title, 25f, ink, true),
-            LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(ctx, 4) })
+        bar.addView(back, LinearLayout.LayoutParams(dp(ctx, 48), dp(ctx, 48)))
+        bar.addView(label(ctx, title, 24f, ink, true),
+            LinearLayout.LayoutParams(0, -2, 1f).apply {
+                leftMargin = dp(ctx, 12)
+            })
         add(parent, bar)
-        if (subtitle != null) add(parent,
-            label(ctx, subtitle, 13f, muted), 9)
+        if (subtitle != null) add(parent, label(ctx, subtitle, 13f, muted), 13)
     }
 
     fun section(parent: LinearLayout, text: String, marginTop: Int = 28) {
@@ -167,18 +174,26 @@ object RejoinUi {
 
     fun navRow(ctx: Context, heading: String, detail: String,
                onTap: () -> Unit): LinearLayout {
-        val row = row(ctx).apply {
-            setPadding(dp(ctx, 2), dp(ctx, 15), dp(ctx, 2), dp(ctx, 15))
+        val content = row(ctx).apply {
+            setPadding(dp(ctx, 4), dp(ctx, 15), dp(ctx, 4), dp(ctx, 15))
+            minimumHeight = dp(ctx, 68)
             isClickable = true
             isFocusable = true
+            contentDescription = if (detail.isBlank()) heading else "$heading, $detail"
+            background = RippleDrawable(
+                ColorStateList.valueOf(raised), null, surface(ctx, Color.WHITE, 10))
             setOnClickListener { onTap() }
         }
         val stack = column(ctx)
-        row.addView(stack, LinearLayout.LayoutParams(0, -2, 1f))
-        add(stack, label(ctx, heading, 16f, ink, true))
-        if (detail.isNotBlank()) add(stack, label(ctx, detail, 12f, muted), 6)
-        val chevron = label(ctx, "›", 25f, muted).apply { gravity = Gravity.CENTER }
-        row.addView(chevron, LinearLayout.LayoutParams(dp(ctx, 24), dp(ctx, 42)))
-        return row
+        content.addView(stack, LinearLayout.LayoutParams(0, -2, 1f))
+        add(stack, label(ctx, heading, 15f, ink, true))
+        if (detail.isNotBlank()) {
+            add(stack, label(ctx, detail, 12f, muted).apply { maxLines = 2 }, 7)
+        }
+        val arrow = icon(ctx, R.drawable.ic_chevron_right, 21)
+        content.addView(arrow, LinearLayout.LayoutParams(dp(ctx, 24), dp(ctx, 24)).apply {
+            leftMargin = dp(ctx, 12)
+        })
+        return content
     }
 }
