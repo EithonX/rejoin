@@ -1,7 +1,6 @@
 package com.eithonx.rejoin
 
 import android.graphics.Bitmap
-import android.os.ParcelFileDescriptor
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
@@ -16,7 +15,6 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
-import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -74,10 +72,5 @@ class ConnectionScreensTest {
         val file = File(compose.activity.filesDir, "$name.png")
         val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
         file.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
-        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        val command = "run-as com.eithonx.rejoin cat files/$name.png > /data/local/tmp/rejoin-$name.png"
-        ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).use {
-            it.readBytes()
-        }
     }
 }

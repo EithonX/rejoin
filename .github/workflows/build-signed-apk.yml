@@ -35,7 +35,7 @@ jobs:
           umask 077
           export REJOIN_KEYSTORE_PATH="$(mktemp "$RUNNER_TEMP/rejoin-signing.XXXXXXXX")"
           trap 'rm -f -- "$REJOIN_KEYSTORE_PATH"' EXIT
-          printf '%s' "$REJOIN_KEYSTORE_BASE64" | base64 --decode > "$REJOIN_KEYSTORE_PATH"
+          printf '%s' "$REJOIN_KEYSTORE_BASE64" | tr -d '\r\n' | base64 --decode > "$REJOIN_KEYSTORE_PATH"
           unset REJOIN_KEYSTORE_BASE64
           ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs \
