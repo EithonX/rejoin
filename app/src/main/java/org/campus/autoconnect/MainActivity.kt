@@ -24,180 +24,191 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * A single-task home screen: connection, appropriate next action, protection.
- * The screen does not advertise product capabilities or expose scheduler internals.
+ * Rejoin is a utility, not a dashboard. A glance answers: Am I connected?
+ * Will the app handle the next expiry? If not, what can I do?
  */
 class MainActivity : Activity() {
-    private val main = Handler(Looper.getMainLooper())
-    private val worker = Executors.newSingleThreadExecutor()
+    private val ui = Handler(Looper.getMainLooper())
+    private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
-    private var monitor: ConnectivityManager.NetworkCallback? = null
-    private var pendingRepair: Runnable? = null
     private var foreground = false
-    private var changeSwitch = false
+    private var networkMonitor: ConnectivityManager.NetworkCallback? = null
+    private var pendingRecovery: Runnable? = null
     private var lastPortalEvent = 0L
-    private var previousNetworkState: String? = null
-    private var live: InternetVerifier.State? = null
+    private var lastNetworkKey: String? = null
+    private var ignoreSwitch = false
+    private var observed: InternetVerifier.State? = null
 
-    private lateinit var title: TextView
-    private lateinit var description: TextView
-    private lateinit var stateTag: TextView
-    private lateinit var wifiName: TextView
-    private lateinit var savedLogin: TextView
-    private lateinit var primary: TextView
-    private lateinit var secondary: TextView
+    private lateinit var stateMark: ConnectionMark
+    private lateinit var eyebrow: TextView
+    private lateinit var headline: TextView
+    private lateinit var explanation: TextView
+    private lateinit var networkLine: TextView
+    private lateinit var primaryButton: TextView
+    private lateinit var alternateButton: TextView
     private lateinit var autoSwitch: Switch
-    private lateinit var protectionTitle: TextView
-    private lateinit var protectionDetail: TextView
-    private lateinit var protectionHelp: TextView
-    private lateinit var lastEvent: TextView
-    private lateinit var lastCheck: TextView
+    private lateinit var autoText: TextView
+    private lateinit var autoHint: TextView
+    private lateinit var troubleshoot: TextView
+    private lateinit var timestamp: TextView
+    private lateinit var activityText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val outer = RejoinUi.column(this).apply { setBackgroundColor(RejoinUi.canvas) }
-        val scroll = ScrollView(this).apply {
+        val root = ScrollView(this).apply {
             setBackgroundColor(RejoinUi.canvas)
             clipToPadding = false
             isFillViewport = true
         }
         val body = RejoinUi.column(this).apply {
-            val side = RejoinUi.dp(this@MainActivity, 24)
-            setPadding(side, RejoinUi.dp(this@MainActivity, 26),
-                side, RejoinUi.dp(this@MainActivity, 32))
+            setPadding(RejoinUi.dp(this@MainActivity, 25),
+                RejoinUi.dp(this@MainActivity, 21),
+                RejoinUi.dp(this@MainActivity, 25),
+                RejoinUi.dp(this@MainActivity, 30))
         }
-        scroll.addView(body)
-        outer.addView(scroll, LinearLayout.LayoutParams(-1, -1))
-        setContentView(outer)
-        RejoinUi.applySystemBars(this, outer)
+        root.addView(body)
+        setContentView(root)
+        RejoinUi.applySystemBars(this, root)
 
-        val brand = RejoinUi.row(this)
-        brand.addView(RejoinUi.icon(this, R.drawable.ic_rejoin_mark, 37),
-            LinearLayout.LayoutParams(RejoinUi.dp(this, 37), RejoinUi.dp(this, 37)))
-        brand.addView(RejoinUi.label(this, "rejoin", 25f, RejoinUi.ink, true),
+        val header = RejoinUi.row(this)
+        header.addView(RejoinUi.icon(this, R.drawable.ic_rejoin_mark, 35),
+            LinearLayout.LayoutParams(RejoinUi.dp(this, 35), RejoinUi.dp(this, 35)))
+        header.addView(RejoinUi.label(this, "rejoin", 23f, RejoinUi.ink, true),
             LinearLayout.LayoutParams(0, -2, 1f).apply {
                 leftMargin = RejoinUi.dp(this@MainActivity, 10)
             })
-        brand.addView(RejoinUi.smallAction(this, "Settings  ↗") { settings() })
-        RejoinUi.add(body, brand)
-        RejoinUi.add(body, RejoinUi.label(this,
-            "YOUR CONNECTION", 11f, RejoinUi.muted, true).apply {
-            letterSpacing = .13f
-        }, 36)
+        val settings = RejoinUi.smallAction(this, "Settings") { openSettings() }
+        settings.contentDescription = "Open Rejoin settings"
+        header.addView(settings)
+        RejoinUi.add(body, header)
 
-        val status = RejoinUi.inset(this, RejoinUi.jadeDeep)
-        status.background = RejoinUi.surface(this, RejoinUi.jadeDeep, 25)
-        status.setPadding(RejoinUi.dp(this, 23), RejoinUi.dp(this, 25),
-            RejoinUi.dp(this, 23), RejoinUi.dp(this, 23))
-        RejoinUi.add(body, status, 12)
-
-        val statusHead = RejoinUi.row(this)
-        statusHead.addView(RejoinUi.label(this, "●", 15f, RejoinUi.mint),
-            LinearLayout.LayoutParams(0, -2, 1f))
-        stateTag = RejoinUi.label(this, "READY", 10f, RejoinUi.jadeDeep, true).apply {
-            setPadding(RejoinUi.dp(this@MainActivity, 11), RejoinUi.dp(this@MainActivity, 7),
-                RejoinUi.dp(this@MainActivity, 11), RejoinUi.dp(this@MainActivity, 7))
-            background = RejoinUi.surface(this@MainActivity, RejoinUi.mint, 20)
+        // One focal area; no feature cards, fake metrics, or repeated labels.
+        val focus = RejoinUi.column(this).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, RejoinUi.dp(this@MainActivity, 50), 0,
+                RejoinUi.dp(this@MainActivity, 8))
         }
-        statusHead.addView(stateTag)
-        RejoinUi.add(status, statusHead)
-        title = RejoinUi.label(this, "Ready when you are.", 28f, RejoinUi.white, true)
-        RejoinUi.add(status, title, 23)
-        description = RejoinUi.label(this,
-            "We'll check the Wi-Fi when you need us.", 14f, RejoinUi.mint)
-        description.setLineSpacing(RejoinUi.dp(this, 3).toFloat(), 1f)
-        RejoinUi.add(status, description, 9)
-
-        val heroSeparator = View(this).apply {
-            setBackgroundColor(android.graphics.Color.rgb(63, 115, 96))
+        RejoinUi.add(body, focus, 18)
+        stateMark = ConnectionMark(this).apply {
+            kind = ConnectionMark.Kind.IDLE
         }
-        status.addView(heroSeparator, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, RejoinUi.dp(this, 1)
-        ).apply { topMargin = RejoinUi.dp(this@MainActivity, 23) })
-        val row = RejoinUi.row(this)
-        row.addView(RejoinUi.icon(this, R.drawable.ic_wifi, 21, RejoinUi.mint))
-        val networkInfo = RejoinUi.column(this)
-        row.addView(networkInfo, LinearLayout.LayoutParams(0, -2, 1f).apply {
-            leftMargin = RejoinUi.dp(this@MainActivity, 12)
-        })
-        wifiName = RejoinUi.label(this, "No Wi-Fi saved", 14f, RejoinUi.white, true)
-        RejoinUi.add(networkInfo, wifiName)
-        savedLogin = RejoinUi.label(this, "Your login isn't saved yet", 12f, RejoinUi.mint)
-        RejoinUi.add(networkInfo, savedLogin, 5)
-        RejoinUi.add(status, row, 16)
+        focus.addView(stateMark, LinearLayout.LayoutParams(
+            RejoinUi.dp(this, 88), RejoinUi.dp(this, 88)
+        ))
 
-        primary = RejoinUi.action(this, "Set up Rejoin", true) { settings() }
-        RejoinUi.add(body, primary, 17)
-        secondary = RejoinUi.smallAction(this, "Check again") { check(false) }.apply {
+        eyebrow = RejoinUi.label(this, "CONNECTION", 11f, RejoinUi.muted, true).apply {
+            letterSpacing = .14f
             gravity = Gravity.CENTER
         }
-        RejoinUi.add(body, secondary, 6)
+        RejoinUi.add(focus, eyebrow, 27)
+        headline = RejoinUi.label(this, "Ready to connect.", 30f, RejoinUi.ink, true).apply {
+            gravity = Gravity.CENTER
+            maxLines = 2
+        }
+        RejoinUi.add(focus, headline, 12)
+        explanation = RejoinUi.label(this, "", 14f, RejoinUi.muted).apply {
+            gravity = Gravity.CENTER
+            maxLines = 3
+            setLineSpacing(RejoinUi.dp(this@MainActivity, 4).toFloat(), 1f)
+        }
+        RejoinUi.add(focus, explanation, 11)
+        networkLine = RejoinUi.label(this, "", 12f, RejoinUi.muted, true).apply {
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        RejoinUi.add(focus, networkLine, 18)
 
-        val protection = RejoinUi.inset(this)
-        RejoinUi.add(body, protection, 29)
-        val protectRow = RejoinUi.row(this)
-        val texts = RejoinUi.column(this)
-        protectRow.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
-        protectionTitle = RejoinUi.label(this, "Automatic recovery", 17f, RejoinUi.ink, true)
-        RejoinUi.add(texts, protectionTitle)
-        protectionDetail = RejoinUi.label(this, "Ready to set up", 13f, RejoinUi.muted)
-        protectionDetail.setLineSpacing(RejoinUi.dp(this, 2).toFloat(), 1f)
-        RejoinUi.add(texts, protectionDetail, 7)
+        primaryButton = RejoinUi.action(this, "Check connection") { runCheck(false) }
+        RejoinUi.add(body, primaryButton, 17)
+        alternateButton = RejoinUi.smallAction(this, "Check again") { runCheck(false) }
+            .apply { gravity = Gravity.CENTER }
+        RejoinUi.add(body, alternateButton, 6)
+
+        val separation = View(this).apply { setBackgroundColor(RejoinUi.line) }
+        body.addView(separation, LinearLayout.LayoutParams(-1, RejoinUi.dp(this, 1)).apply {
+            topMargin = RejoinUi.dp(this@MainActivity, 38)
+        })
+
+        val protectionRow = RejoinUi.row(this).apply {
+            setPadding(0, RejoinUi.dp(this@MainActivity, 18), 0,
+                RejoinUi.dp(this@MainActivity, 16))
+        }
+        val protectionCopy = RejoinUi.column(this)
+        protectionRow.addView(protectionCopy, LinearLayout.LayoutParams(0, -2, 1f))
+        RejoinUi.add(protectionCopy,
+            RejoinUi.label(this, "Auto-reconnect", 16f, RejoinUi.ink, true))
+        autoText = RejoinUi.label(this, "Off", 13f, RejoinUi.muted)
+        RejoinUi.add(protectionCopy, autoText, 6)
         autoSwitch = Switch(this).apply {
+            contentDescription = "Automatic Wi-Fi reconnection"
             thumbTintList = ColorStateList.valueOf(RejoinUi.jade)
-            trackTintList = ColorStateList.valueOf(RejoinUi.mint)
-            contentDescription = "Automatic recovery"
+            trackTintList = ColorStateList.valueOf(RejoinUi.raised)
         }
-        protectRow.addView(autoSwitch)
-        RejoinUi.add(protection, protectRow)
-        protectionHelp = RejoinUi.smallAction(this, "Review background access  ↗") {
-            settings()
-        }
-        RejoinUi.add(protection, protectionHelp, 10)
-        autoSwitch.setOnCheckedChangeListener { _, checked ->
-            if (!changeSwitch) toggleRecovery(checked)
+        protectionRow.addView(autoSwitch)
+        RejoinUi.add(body, protectionRow)
+        autoSwitch.setOnCheckedChangeListener { _, enabled ->
+            if (!ignoreSwitch) setAutoRecovery(enabled)
         }
 
-        val details = RejoinUi.row(this)
-        val column = RejoinUi.column(this)
-        details.addView(column, LinearLayout.LayoutParams(0, -2, 1f))
-        RejoinUi.add(column, RejoinUi.label(this, "LAST CHECK", 10f, RejoinUi.muted, true)
-            .apply { letterSpacing = .13f })
-        lastCheck = RejoinUi.label(this, "Not yet", 14f, RejoinUi.ink, true)
-        RejoinUi.add(column, lastCheck, 7)
-        details.addView(RejoinUi.smallAction(this, "Activity  →") {
+        autoHint = RejoinUi.label(this, "", 12f, RejoinUi.amber).apply {
+            maxLines = 3
+        }
+        RejoinUi.add(body, autoHint, 2)
+        troubleshoot = RejoinUi.smallAction(this, "Fix background access  →") {
+            openSettings()
+        }
+        RejoinUi.add(body, troubleshoot, 3)
+
+        // Last meaningful facts are secondary, not the app's content.
+        val lowerLine = View(this).apply { setBackgroundColor(RejoinUi.line) }
+        body.addView(lowerLine, LinearLayout.LayoutParams(-1, RejoinUi.dp(this, 1)).apply {
+            topMargin = RejoinUi.dp(this@MainActivity, 23)
+        })
+        val lastRow = RejoinUi.row(this).apply {
+            setPadding(0, RejoinUi.dp(this@MainActivity, 16), 0, 0)
+        }
+        val lastInfo = RejoinUi.column(this)
+        lastRow.addView(lastInfo, LinearLayout.LayoutParams(0, -2, 1f))
+        RejoinUi.add(lastInfo, RejoinUi.label(this, "Last checked", 12f, RejoinUi.muted))
+        timestamp = RejoinUi.label(this, "Not yet", 14f, RejoinUi.ink, true)
+        RejoinUi.add(lastInfo, timestamp, 5)
+        lastRow.addView(RejoinUi.smallAction(this, "Activity  →") {
             startActivity(Intent(this, ActivityLogActivity::class.java))
         })
-        RejoinUi.add(body, details, 28)
-        lastEvent = RejoinUi.label(this, "", 13f, RejoinUi.muted)
-        RejoinUi.add(body, lastEvent, 12)
-
+        RejoinUi.add(body, lastRow, 0)
+        activityText = RejoinUi.label(this, "", 12f, RejoinUi.muted)
+        RejoinUi.add(body, activityText, 13)
         render()
     }
 
-    private fun settings() = startActivity(Intent(this, SettingsActivity::class.java))
+    private fun openSettings() {
+        startActivity(Intent(this, SettingsActivity::class.java))
+    }
 
-    private fun toggleRecovery(enabled: Boolean) {
+    private fun setAutoRecovery(enabled: Boolean) {
         val prefs = getSharedPreferences("profile", MODE_PRIVATE)
         if (enabled) {
-            val saved = TrustedNetworks.all(this)
-            val available = saved.any { CredentialVault.hasLoginFor(this, it) }
-            if (!available || !prefs.getBoolean("http_opt_in", false)) {
-                changeSwitch = true
+            val ready = TrustedNetworks.all(this).any {
+                CredentialVault.hasLoginFor(this, it)
+            } && prefs.getBoolean("http_opt_in", false)
+            if (!ready) {
+                ignoreSwitch = true
                 autoSwitch.isChecked = false
-                changeSwitch = false
-                settings()
+                ignoreSwitch = false
+                openSettings()
                 return
             }
             prefs.edit().putBoolean("auto_enabled", true).commit()
-            val scheduled = RecoveryScheduler.schedule(this, 20_000L)
-            RecoveryScheduler.registerWifiEvents(this)
-            if (!scheduled) {
+            if (RecoveryScheduler.schedule(this, 15_000L)) {
+                RecoveryScheduler.registerWifiEvents(this)
+                ActivityHistory.record(this, "Automatic recovery enabled")
+            } else {
                 prefs.edit().putBoolean("auto_enabled", false).commit()
-                changeSwitch = true
+                ignoreSwitch = true
                 autoSwitch.isChecked = false
-                changeSwitch = false
-            } else ActivityHistory.record(this, "Automatic recovery enabled")
+                ignoreSwitch = false
+            }
         } else {
             prefs.edit().putBoolean("auto_enabled", false).commit()
             RecoveryScheduler.disable(this)
@@ -206,259 +217,264 @@ class MainActivity : Activity() {
         render()
     }
 
-    private fun check(repair: Boolean) {
+    private fun runCheck(repair: Boolean) {
         if (!busy.compareAndSet(false, true)) return
-        title.text = if (repair) "Reconnecting…" else "Checking connection…"
-        description.text = "Using your trusted Wi-Fi."
-        primary.isEnabled = false
-        worker.execute {
+        stateMark.kind = ConnectionMark.Kind.WORKING
+        headline.text = if (repair) "Reconnecting…" else "Checking…"
+        explanation.text = "Checking your saved Wi-Fi."
+        primaryButton.isEnabled = false
+        executor.execute {
             try {
-                val outcome: String
                 val result: InternetVerifier.State
+                val message: String
                 if (repair) {
-                    outcome = SessionEngine.run(applicationContext, userInitiated = true,
-                        progress = { step -> main.post {
-                            if (busy.get()) description.text = step
-                        } })
+                    message = SessionEngine.run(applicationContext,
+                        userInitiated = true, progress = { })
                     result = when {
-                        outcome.contains("LOGIN VERIFIED", true) ||
-                            outcome.contains("Internet online", true) -> InternetVerifier.State.ONLINE
-                        outcome.contains("portal", true) -> InternetVerifier.State.PORTAL
+                        message.contains("LOGIN VERIFIED", true) ||
+                            message.contains("Internet online", true) -> InternetVerifier.State.ONLINE
+                        message.contains("portal", true) -> InternetVerifier.State.PORTAL
                         else -> InternetVerifier.State.UNKNOWN
                     }
                 } else {
                     val check = InternetVerifier.check(applicationContext)
                     result = check.state
-                    outcome = check.details
-                    val profile = WifiProbe.current(applicationContext)
-                        ?.let { TrustedNetworks.find(applicationContext, it) }
+                    message = check.details
+                    val profile = WifiProbe.current(applicationContext)?.let {
+                        TrustedNetworks.find(applicationContext, it)
+                    }
                     getSharedPreferences("profile", MODE_PRIVATE).edit()
                         .putLong("last_checked", System.currentTimeMillis())
                         .putString("last_profile_id", profile?.id)
-                        .putString("last_result", outcome.take(200))
+                        .putString("last_result", message.take(200))
                         .putString("last_class", when (result) {
                             InternetVerifier.State.ONLINE -> "healthy"
                             InternetVerifier.State.PORTAL -> "portal"
                             InternetVerifier.State.UNKNOWN -> "unknown"
                         }).apply()
-                    if (result == InternetVerifier.State.ONLINE)
+                    if (result == InternetVerifier.State.ONLINE) {
                         NetworkStatusHint.requestAfterVerifiedOnline(applicationContext)
+                    }
                 }
-                main.post {
-                    live = result
+                ui.post {
                     busy.set(false)
+                    observed = result
                     render()
-                    if (repair && result == InternetVerifier.State.UNKNOWN)
-                        description.text = outcome.take(125)
                 }
-            } catch (e: Exception) {
-                main.post {
+            } catch (_: Exception) {
+                ui.post {
                     busy.set(false)
-                    live = InternetVerifier.State.UNKNOWN
+                    observed = InternetVerifier.State.UNKNOWN
                     render()
-                    description.text = "Couldn't finish checking the connection."
                 }
             }
         }
     }
 
     private fun render() {
-        if (!::title.isInitialized) return
+        if (!::headline.isInitialized) return
         val prefs = getSharedPreferences("profile", MODE_PRIVATE)
         val profiles = TrustedNetworks.all(this)
-        val active = WifiProbe.current(this)?.let { TrustedNetworks.find(this, it) }
-        val account = active?.let { CredentialVault.hasLoginFor(this, it) } ?: false
-        wifiName.text = active?.label ?: if (profiles.isNotEmpty())
-            "Away from saved Wi-Fi" else "No Wi-Fi saved"
-        savedLogin.text = when {
-            active != null && account -> "✓  Login saved on this device"
-            active != null -> "No login saved for this Wi-Fi"
-            profiles.isEmpty() -> "Save your Wi-Fi in Settings"
-            else -> "Watching for your saved networks"
-        }
-        changeSwitch = true
-        autoSwitch.isChecked = RecoveryPrefs.enabled(this)
-        changeSwitch = false
-        val health = BackgroundHealth.inspect(this)
-        protectionTitle.text = when (health.level) {
-            BackgroundHealth.Level.READY -> "Automatic recovery"
-            BackgroundHealth.Level.PAUSED -> "Automatic recovery"
-            BackgroundHealth.Level.NEEDS_ACTION -> "Background access needs attention"
-        }
-        protectionDetail.text = when (health.level) {
-            BackgroundHealth.Level.READY -> "On · Android is managing background checks"
-            BackgroundHealth.Level.PAUSED -> "Off"
-            BackgroundHealth.Level.NEEDS_ACTION -> health.description
-        }
-        protectionHelp.visibility = if (health.level == BackgroundHealth.Level.NEEDS_ACTION)
-            View.VISIBLE else View.GONE
-
-        val checked = prefs.getLong("last_checked", 0L)
-        lastCheck.text = if (checked > 0L)
-            DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-                .format(Date(checked)) else "Not yet"
-        val items = ActivityHistory.latest(this, 1)
-        lastEvent.text = items.firstOrNull()?.event ?: "Nothing needs your attention."
-
-        val recent = checked > 0 &&
-            System.currentTimeMillis() - checked in 0L..1_200_000L &&
-            prefs.getString("last_profile_id", null) == active?.id
-        val connection = live ?: when {
-            recent && prefs.getString("last_class", null) in listOf("healthy", "restored") ->
+        val current = WifiProbe.current(this)?.let { TrustedNetworks.find(this, it) }
+        val hasAccount = current?.let { CredentialVault.hasLoginFor(this, it) } ?: false
+        val checkedAt = prefs.getLong("last_checked", 0L)
+        val recent = current != null && checkedAt > 0 &&
+            System.currentTimeMillis() - checkedAt in 0L..1_200_000L &&
+            current.id == prefs.getString("last_profile_id", null)
+        val cachedState = when {
+            recent && prefs.getString("last_class", "") in listOf("healthy", "restored") ->
                 InternetVerifier.State.ONLINE
-            recent && prefs.getString("last_class", null) == "portal" ->
+            recent && prefs.getString("last_class", "") == "portal" ->
                 InternetVerifier.State.PORTAL
             else -> InternetVerifier.State.UNKNOWN
         }
+        val state = observed ?: cachedState
+        networkLine.text = current?.label ?: if (profiles.isEmpty()) ""
+            else "Saved networks: " + profiles.size
 
-        var primaryLabel = ""
-        var primaryAction: () -> Unit = {}
-        var secondaryLabel = ""
-        var secondaryAction: () -> Unit = {}
-        if (!busy.get()) {
-            when {
-                profiles.isEmpty() -> {
-                    title.text = "Let's get you set up."
-                    description.text = "Save a Wi-Fi network and your campus login."
-                    stateTag.text = "SETUP"
-                    primaryLabel = "Set up Rejoin"
-                    primaryAction = { settings() }
-                }
-                active == null -> {
-                    title.text = "Standing by."
-                    description.text = "Rejoin is ready when you connect to a saved Wi-Fi."
-                    stateTag.text = "AWAY"
-                    primaryLabel = "Manage saved Wi-Fi"
-                    primaryAction = { settings() }
-                }
-                !account -> {
-                    title.text = "One last step."
-                    description.text = "Save your campus login to protect this Wi-Fi."
-                    stateTag.text = "SETUP"
-                    primaryLabel = "Save your login"
-                    primaryAction = {
-                        startActivity(Intent(this, LoginsActivity::class.java))
-                    }
-                }
-                connection == InternetVerifier.State.ONLINE -> {
-                    title.text = "You're connected."
-                    description.text = "Internet is available on " + active.label + "."
-                    stateTag.text = "ONLINE"
-                    secondaryLabel = "Check again"
-                    secondaryAction = { check(false) }
-                }
-                connection == InternetVerifier.State.PORTAL -> {
-                    title.text = "Sign-in needed."
-                    description.text = "Your campus session needs a fresh sign-in."
-                    stateTag.text = "NEEDS LOGIN"
-                    primaryLabel = "Reconnect"
-                    primaryAction = { check(true) }
-                    secondaryLabel = "Check again"
-                    secondaryAction = { check(false) }
-                }
-                else -> {
-                    title.text = "Ready to check."
-                    description.text = "Your connection hasn't been verified recently."
-                    stateTag.text = "READY"
-                    primaryLabel = "Check connection"
-                    primaryAction = { check(false) }
-                    secondaryLabel = "Try reconnecting"
-                    secondaryAction = { check(true) }
-                }
+        val healthy = BackgroundHealth.inspect(this)
+        ignoreSwitch = true
+        autoSwitch.isChecked = RecoveryPrefs.enabled(this)
+        ignoreSwitch = false
+        autoText.text = when (healthy.level) {
+            BackgroundHealth.Level.PAUSED -> "Off"
+            BackgroundHealth.Level.READY -> "Active in the background"
+            BackgroundHealth.Level.NEEDS_ACTION -> "Needs your attention"
+        }
+        autoHint.visibility = if (healthy.level == BackgroundHealth.Level.NEEDS_ACTION)
+            View.VISIBLE else View.GONE
+        autoHint.text = if (healthy.level == BackgroundHealth.Level.NEEDS_ACTION)
+            healthy.description else ""
+        troubleshoot.visibility = if (healthy.level == BackgroundHealth.Level.NEEDS_ACTION)
+            View.VISIBLE else View.GONE
+
+        timestamp.text = if (checkedAt > 0)
+            DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                .format(Date(checkedAt)) else "Not yet"
+        activityText.text = ActivityHistory.latest(this, 1).firstOrNull()?.event
+            ?: "No connection events yet."
+
+        var primary: String? = null
+        var secondary: String? = null
+        var action: () -> Unit = {}
+        var extra: () -> Unit = {}
+        if (!busy.get()) when {
+            profiles.isEmpty() -> {
+                stateMark.kind = ConnectionMark.Kind.IDLE
+                eyebrow.text = "WELCOME"
+                headline.text = "Wi-Fi, handled."
+                explanation.text = "Save your campus Wi-Fi and login once."
+                primary = "Get started"
+                action = { openSettings() }
+            }
+            current == null -> {
+                stateMark.kind = ConnectionMark.Kind.IDLE
+                eyebrow.text = "STANDING BY"
+                headline.text = "Away from campus."
+                explanation.text = "Rejoin will be ready on your saved Wi-Fi."
+            }
+            !hasAccount -> {
+                stateMark.kind = ConnectionMark.Kind.ATTENTION
+                eyebrow.text = "ONE MORE STEP"
+                headline.text = "Login not saved."
+                explanation.text = "Add an account for this network."
+                primary = "Save login"
+                action = { startActivity(Intent(this, LoginsActivity::class.java)) }
+            }
+            state == InternetVerifier.State.ONLINE -> {
+                stateMark.kind = ConnectionMark.Kind.ONLINE
+                eyebrow.text = "ONLINE"
+                headline.text = "Connected."
+                explanation.text = if (RecoveryPrefs.enabled(this))
+                    "You're online. Rejoin is ready if the session expires."
+                else "You're online. Auto-reconnect is off."
+                secondary = "Check again"
+                extra = { runCheck(false) }
+            }
+            state == InternetVerifier.State.PORTAL -> {
+                stateMark.kind = ConnectionMark.Kind.ATTENTION
+                eyebrow.text = "ACTION NEEDED"
+                headline.text = "Sign-in required."
+                explanation.text = "Your campus session has expired."
+                primary = "Reconnect now"
+                action = { runCheck(true) }
+                secondary = "Check again"
+                extra = { runCheck(false) }
+            }
+            else -> {
+                stateMark.kind = ConnectionMark.Kind.IDLE
+                eyebrow.text = "STATUS UNKNOWN"
+                headline.text = "Let's check."
+                explanation.text = "Rejoin hasn't confirmed internet access recently."
+                primary = "Check connection"
+                action = { runCheck(false) }
+                secondary = "Try reconnecting"
+                extra = { runCheck(true) }
             }
         }
-        primary.visibility = if (primaryLabel.isBlank()) View.GONE else View.VISIBLE
-        primary.text = primaryLabel
-        primary.isEnabled = !busy.get()
-        primary.setOnClickListener { primaryAction() }
-        secondary.visibility = if (secondaryLabel.isBlank()) View.GONE else View.VISIBLE
-        secondary.text = secondaryLabel
-        secondary.setOnClickListener { secondaryAction() }
+
+        if (busy.get()) {
+            stateMark.kind = ConnectionMark.Kind.WORKING
+            eyebrow.text = "PLEASE WAIT"
+            primaryButton.visibility = View.GONE
+            alternateButton.visibility = View.GONE
+        } else {
+            primaryButton.visibility = if (primary == null) View.GONE else View.VISIBLE
+            alternateButton.visibility = if (secondary == null) View.GONE else View.VISIBLE
+            primaryButton.text = primary.orEmpty()
+            primaryButton.isEnabled = true
+            primaryButton.setOnClickListener { action() }
+            alternateButton.text = secondary.orEmpty()
+            alternateButton.setOnClickListener { extra() }
+        }
     }
 
     override fun onStart() {
         super.onStart()
         foreground = true
-        live = null
+        observed = null
         if (RecoveryPrefs.enabled(this)) {
-            // Upgrade older one-shot installations in place without user action.
             RecoveryScheduler.schedulePeriodic(this)
             RecoveryScheduler.registerWifiEvents(this)
         }
         render()
         val request = NetworkRequest.Builder().clearCapabilities()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build()
-        val cb = if (Build.VERSION.SDK_INT >= 31)
+        val callback = if (Build.VERSION.SDK_INT >= 31)
             object : ConnectivityManager.NetworkCallback(
-                ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO) {
-                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                    handleWifiEvent(network, caps)
+                ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO
+            ) {
+                override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                    onNetworkChanged(network, capabilities)
                 }
             } else object : ConnectivityManager.NetworkCallback() {
-                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                    handleWifiEvent(network, caps)
+                override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                    onNetworkChanged(network, capabilities)
                 }
             }
         try {
             (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
-                .registerNetworkCallback(request, cb)
-            monitor = cb
-        } catch (_: Exception) {}
+                .registerNetworkCallback(request, callback)
+            networkMonitor = callback
+        } catch (_: Exception) { networkMonitor = null }
         val last = getSharedPreferences("profile", MODE_PRIVATE)
             .getLong("last_checked", 0L)
         if (LiveSessionTest.selectedWifiMatches(this) &&
             System.currentTimeMillis() - last > 120_000L)
-            main.postDelayed({ if (foreground) check(false) }, 600L)
+            ui.postDelayed({ if (foreground) runCheck(false) }, 650L)
     }
 
-    private fun handleWifiEvent(network: Network, caps: NetworkCapabilities) {
+    private fun onNetworkChanged(network: Network, capabilities: NetworkCapabilities) {
         val state = when {
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) -> "online"
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) -> "portal"
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) -> "online"
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) -> "portal"
             else -> "unknown"
         }
-        main.post {
+        ui.post {
             if (!foreground) return@post
-            val snapshot = WifiProbe.current(this, network) ?: return@post
-            if (TrustedNetworks.find(this, snapshot) == null) return@post
-            val signature = network.toString() + "|" + state
-            if (signature == previousNetworkState) return@post
-            previousNetworkState = signature
-            if (state == "online") {
-                live = InternetVerifier.State.ONLINE
-                render()
-            } else if (state == "portal" && RecoveryPrefs.enabled(this) &&
-                System.currentTimeMillis() - lastPortalEvent > 90_000L) {
-                lastPortalEvent = System.currentTimeMillis()
-                pendingRepair?.let { main.removeCallbacks(it) }
-                val action = Runnable { if (foreground) check(true) }
-                pendingRepair = action
-                main.postDelayed(action, 2_200L)
+            val snap = WifiProbe.current(this, network) ?: return@post
+            if (TrustedNetworks.find(this, snap) == null) return@post
+            val key = network.toString() + "|" + state
+            if (key == lastNetworkKey) return@post
+            lastNetworkKey = key
+            when (state) {
+                "online" -> {
+                    observed = InternetVerifier.State.ONLINE
+                    render()
+                }
+                "portal" -> if (RecoveryPrefs.enabled(this) &&
+                    System.currentTimeMillis() - lastPortalEvent > 90_000L) {
+                    lastPortalEvent = System.currentTimeMillis()
+                    pendingRecovery?.let { ui.removeCallbacks(it) }
+                    val task = Runnable { if (foreground) runCheck(true) }
+                    pendingRecovery = task
+                    ui.postDelayed(task, 2300L)
+                }
             }
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::headline.isInitialized) render()
+    }
+
     override fun onStop() {
         foreground = false
-        pendingRepair?.let { main.removeCallbacks(it) }
-        pendingRepair = null
-        monitor?.let {
+        pendingRecovery?.let { ui.removeCallbacks(it) }
+        pendingRecovery = null
+        networkMonitor?.let {
             try {
                 (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
                     .unregisterNetworkCallback(it)
             } catch (_: Exception) {}
         }
-        monitor = null
+        networkMonitor = null
         super.onStop()
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (::title.isInitialized) render()
-    }
-
     override fun onDestroy() {
-        worker.shutdownNow()
+        executor.shutdownNow()
         super.onDestroy()
     }
 }
