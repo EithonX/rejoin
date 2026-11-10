@@ -64,7 +64,7 @@ class ProtectionActivity : RejoinActivity() {
                 val issue = health.issue
                 if (issue?.required == true) PermissionNotice(issue) { resolveBackgroundIssue(issue) }
                 SectionLabel("Background checks")
-                ListGroup { ActionRow("Check frequency", mode.label) { choosePace(mode) } }
+                ListGroup { ActionRow("Fallback check frequency", mode.label) { choosePace(mode) } }
                 if (issue == BackgroundHealth.Issue.OPTIMIZED) BodyText(issue.detail)
                 if (health.lastRun > 0) BodyText("Last check " +
                     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(health.lastRun)))
@@ -94,7 +94,7 @@ class ProtectionActivity : RejoinActivity() {
         showDialog { dismiss ->
             AlertDialog(
                 onDismissRequest = dismiss,
-                title = { Text("Check frequency") },
+                title = { Text("Fallback check frequency") },
                 text = {
                     ListGroup {
                         RecoveryPolicy.Mode.entries.forEach { mode ->

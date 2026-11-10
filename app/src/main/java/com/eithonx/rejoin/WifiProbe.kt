@@ -68,14 +68,18 @@ object WifiProbe {
         if (fallback != null) return fallback
         // API 31+ can redact transportInfo if background location isn't allowed.
         // Avoid attributing Wi-Fi identity to an arbitrary network in multi-Wi-Fi mode.
-        if (wifiNetworks.size != 1) return null
+        val connectedWifi = if (requiredNetwork == null) wifiNetworks else cm.allNetworks.filter {
+            cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
+        val onlyWifi = connectedWifi.singleOrNull() ?: return null
+        if (onlyWifi != wifiNetworks.singleOrNull()) return null
         val info = try {
             val manager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             manager.connectionInfo
         } catch (_: Exception) { null } ?: return null
         val ssid = normalize(info.ssid) ?: return null
         if (!validBssid(info.bssid)) return null
-        return Snapshot(wifiNetworks.single(), ssid, info.bssid)
+        return Snapshot(onlyWifi, ssid, info.bssid)
     }
 
     fun locationEnabled(ctx: Context): Boolean {

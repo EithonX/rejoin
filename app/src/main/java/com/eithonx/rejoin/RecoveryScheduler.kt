@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
@@ -14,10 +15,8 @@ import android.os.Build
 /**
  * Process-independent background recovery.
  *
- * The original one-shot chain could disappear if Android killed the process
- * between job completion and scheduling the next job. A persistent periodic
- * job now remains owned by JobScheduler; a separate event job handles a new
- * Wi-Fi connection without restarting the periodic timer.
+ * Android's captive portal signal triggers an early check. The persisted
+ * periodic job covers portals Android misses, including expiry on the same Wi-Fi.
  */
 object RecoveryScheduler {
     const val JOB_ID = 417
@@ -28,7 +27,7 @@ object RecoveryScheduler {
     private fun scheduler(context: Context): JobScheduler =
         context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
 
-    internal fun wifiRequest(): NetworkRequest = NetworkRequest.Builder().apply {
+    internal fun wifiRequest(captiveOnly: Boolean = false): NetworkRequest = NetworkRequest.Builder().apply {
         if (Build.VERSION.SDK_INT >= 30) clearCapabilities()
         else {
             removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
@@ -36,6 +35,7 @@ object RecoveryScheduler {
             removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
         }
         addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+        if (captiveOnly) addCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
     }.build()
 
     private fun wifiConstraint(builder: JobInfo.Builder): JobInfo.Builder {
@@ -79,13 +79,11 @@ object RecoveryScheduler {
     }
 
     fun scheduleEvent(context: Context, delayMs: Long = 15_000L): Boolean {
-        if (!RecoveryPrefs.enabled(context)) return false
+        if (!RecoveryPrefs.enabled(context) || eventCandidate(context) == null) return false
         val delay = delayMs.coerceIn(5_000L, 2L * 60_000L)
         val builder = wifiConstraint(JobInfo.Builder(
             EVENT_JOB_ID, ComponentName(context, ProbeJobService::class.java)
         )).setMinimumLatency(delay)
-            .setOverrideDeadline(delay + 5L * 60_000L)
-            .setPersisted(true)
         return try {
             scheduler(context).schedule(builder.build()) == JobScheduler.RESULT_SUCCESS
         } catch (_: Exception) { false }
@@ -108,21 +106,42 @@ object RecoveryScheduler {
         if (!RecoveryPrefs.enabled(context)) return false
         return try {
             (context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
-                .registerNetworkCallback(wifiRequest(), wifiIntent(context))
+                .registerNetworkCallback(wifiRequest(captiveOnly = true), wifiIntent(context))
             true
         } catch (_: Exception) { false }
     }
 
-    fun onWifiAppeared(context: Context) {
+    internal fun eventCandidate(context: Context, network: Network? = null): WifiProbe.Snapshot? {
+        val prefs = context.getSharedPreferences(PROFILE, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("http_opt_in", false)) return null
+        val wifi = WifiProbe.current(context, network) ?: return null
+        val profile = TrustedNetworks.find(context, wifi) ?: return null
+        val manager = context.getSystemService(ConnectivityManager::class.java)
+        val caps = manager.getNetworkCapabilities(wifi.network) ?: return null
+        if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) &&
+            !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)) return null
+        return wifi.takeIf { CredentialVault.hasLoginFor(context, profile) }
+    }
+
+    fun onPortalDetected(context: Context) {
         if (!RecoveryPrefs.enabled(context)) return
         val prefs = context.getSharedPreferences(PROFILE, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         val previous = prefs.getLong("last_wifi_event", 0L)
         if (previous > 0L && now - previous in 0L..119_999L) return
-        prefs.edit().putLong("last_wifi_event", now).apply()
-        // Do not replace the periodic job. A network event isn't an expiry event.
-        schedulePeriodic(context)
-        scheduleEvent(context)
+        if (scheduleEvent(context)) prefs.edit().putLong("last_wifi_event", now).apply()
+    }
+
+    internal fun rearmAfterCheck(context: Context) {
+        val manager = context.getSystemService(ConnectivityManager::class.java)
+        // Android sends a PendingIntent once. Rearming during the same captive
+        // session would immediately trigger another wakeup.
+        val captiveWifi = manager.allNetworks.any { network ->
+            val caps = manager.getNetworkCapabilities(network) ?: return@any false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
+        }
+        if (!captiveWifi) registerWifiEvents(context)
     }
 
     fun disable(context: Context) {
@@ -149,7 +168,7 @@ object RecoveryScheduler {
 class NetworkWakeReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == RecoveryScheduler.ACTION_NETWORK)
-            RecoveryScheduler.onWifiAppeared(context.applicationContext)
+            RecoveryScheduler.onPortalDetected(context.applicationContext)
     }
 }
 
