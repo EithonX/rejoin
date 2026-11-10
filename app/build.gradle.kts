@@ -9,8 +9,8 @@ android {
         applicationId = "org.campus.autoconnect"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "2.3.0-beta1"
+        versionCode = 15
+        versionName = "2.4.0-beta1"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
