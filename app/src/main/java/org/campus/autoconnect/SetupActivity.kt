@@ -100,7 +100,10 @@ class SetupActivity : Activity() {
     private fun showNetworkStage() {
         stepCaption.text = "STEP 1 OF 3"
         header.text = "Your Wi-Fi."
-        helper.text = "Connect to the Wi-Fi you want Rejoin to remember."
+        val permitted = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        helper.text = if (!permitted) "Allow Wi-Fi access to find your current network."
+            else "Connect to the Wi-Fi you want Rejoin to remember."
         val snapshot = WifiProbe.current(this)
         val panel = RejoinUi.inset(this)
         RejoinUi.add(workArea, panel)
@@ -113,7 +116,11 @@ class SetupActivity : Activity() {
             else "We'll remember this router", 12f,
             if (snapshot == null) RejoinUi.amber else RejoinUi.muted), 8)
 
-        primary.text = if (snapshot == null) "Open Wi-Fi settings" else "Save this Wi-Fi"
+        primary.text = when {
+            !permitted -> "Allow Wi-Fi access"
+            snapshot == null -> "Open Wi-Fi settings"
+            else -> "Save this Wi-Fi"
+        }
         primary.setOnClickListener {
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
                 PackageManager.PERMISSION_GRANTED) {
