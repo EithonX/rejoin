@@ -54,7 +54,6 @@ class SetupActivity : Activity() {
             LinearLayout.LayoutParams(0, -2, 1f).apply {
                 leftMargin = RejoinUi.dp(this@SetupActivity, 11)
             })
-        top.addView(RejoinUi.smallAction(this, "Not now") { deferSetup() })
         RejoinUi.add(body, top)
         stepCaption = RejoinUi.label(this, "", 11f, RejoinUi.jade, true)
             .apply { letterSpacing = .13f }
@@ -80,11 +79,16 @@ class SetupActivity : Activity() {
     }
 
     private fun stage(): Int {
-        if (TrustedNetworks.all(this).isEmpty()) return 1
-        if (!CredentialVault.hasCredentials(this) ||
-            !getSharedPreferences("profile", MODE_PRIVATE).getBoolean("http_opt_in", false))
-            return 2
-        return 3
+        val state = SetupFlow.next(
+            TrustedNetworks.all(this).isNotEmpty(),
+            CredentialVault.hasCredentials(this),
+            getSharedPreferences("profile", MODE_PRIVATE).getBoolean("http_opt_in", false)
+        )
+        return when (state) {
+            SetupFlow.Step.WIFI -> 1
+            SetupFlow.Step.LOGIN -> 2
+            SetupFlow.Step.READY -> 3
+        }
     }
 
     private fun render() {

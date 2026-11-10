@@ -181,11 +181,14 @@ class MainActivity : Activity() {
         RejoinUi.add(body, activityText, 13)
         render()
         val prefs = getSharedPreferences("profile", MODE_PRIVATE)
-        val setUp = TrustedNetworks.all(this).isNotEmpty() && CredentialVault.hasCredentials(this)
+        val setUp = TrustedNetworks.all(this).isNotEmpty() &&
+            CredentialVault.hasCredentials(this) &&
+            prefs.getBoolean("http_opt_in", false)
         if (setUp) prefs.edit().putBoolean("onboarding_completed", true).apply()
-        if (savedInstanceState == null && !setUp &&
-            !prefs.getBoolean("onboarding_completed", false) &&
-            !prefs.getBoolean("onboarding_deferred", false)) {
+        if (savedInstanceState == null && SetupFlow.shouldAutoOpen(
+                setUp,
+                prefs.getBoolean("onboarding_completed", false),
+                prefs.getBoolean("onboarding_deferred", false))) {
             startActivity(Intent(this, SetupActivity::class.java))
         }
     }
