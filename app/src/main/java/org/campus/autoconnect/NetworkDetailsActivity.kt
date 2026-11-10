@@ -27,54 +27,39 @@ class NetworkDetailsActivity : Activity() {
             finish()
             return
         }
-        val root = RejoinUi.column(this).apply { setBackgroundColor(RejoinUi.canvas) }
-        val scroll = ScrollView(this)
+        val scroll = ScrollView(this).apply { setBackgroundColor(RejoinUi.canvas) }
         val body = RejoinUi.column(this).apply {
-            val side = RejoinUi.dp(this@NetworkDetailsActivity, 23)
-            setPadding(side, RejoinUi.dp(this@NetworkDetailsActivity, 25), side, side)
+            val side = RejoinUi.dp(this@NetworkDetailsActivity, 24)
+            setPadding(side, side, side, RejoinUi.dp(this@NetworkDetailsActivity, 35))
         }
         scroll.addView(body)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, -1))
-        setContentView(root)
-        RejoinUi.applySystemBars(this, root)
+        setContentView(scroll)
+        RejoinUi.applySystemBars(this, scroll)
+        RejoinUi.header(this, body, "Wi-Fi details")
 
-        val header = RejoinUi.row(this)
-        header.addView(RejoinUi.smallAction(this, "←") { finish() },
-            LinearLayout.LayoutParams(RejoinUi.dp(this, 38), -2))
-        header.addView(RejoinUi.label(this, "Trusted Wi-Fi", 27f, RejoinUi.ink, true),
-            LinearLayout.LayoutParams(0, -2, 1f))
-        RejoinUi.add(body, header)
+        label = RejoinUi.label(this, "", 26f, RejoinUi.ink, true)
+        RejoinUi.add(body, label, 33)
+        identity = RejoinUi.label(this, "", 13f, RejoinUi.muted)
+        RejoinUi.add(body, identity, 8)
+        RejoinUi.add(body, RejoinUi.smallAction(this, "Rename") { rename() }, 11)
 
-        val main = RejoinUi.inset(this)
-        RejoinUi.add(body, main, 24)
-        label = RejoinUi.label(this, "", 20f, RejoinUi.ink, true)
-        RejoinUi.add(main, label)
-        identity = RejoinUi.label(this, "", 12f, RejoinUi.muted)
-        RejoinUi.add(main, identity, 10)
-        RejoinUi.add(main, RejoinUi.action(this, "Rename this Wi-Fi", false) { rename() }, 17)
+        RejoinUi.section(body, "Login for this Wi-Fi", 31)
+        login = RejoinUi.label(this, "", 15f, RejoinUi.ink, true)
+        RejoinUi.add(body, login, 14)
 
-        val accountPanel = RejoinUi.inset(this)
-        RejoinUi.add(body, accountPanel, 15)
-        RejoinUi.add(accountPanel, RejoinUi.label(this, "LOGIN FOR THIS WI-FI",
-            11f, RejoinUi.muted, true).apply { letterSpacing = .13f })
-        login = RejoinUi.label(this, "", 17f, RejoinUi.ink, true)
-        RejoinUi.add(accountPanel, login, 14)
-        RejoinUi.add(accountPanel, RejoinUi.label(this,
-            "Using your default login is recommended. You only need another login if this router requires a different account.",
-            12f, RejoinUi.muted), 8)
-        RejoinUi.add(accountPanel, RejoinUi.action(this, "Choose saved login", false) {
+        RejoinUi.add(body, RejoinUi.action(this, "Change login", false) {
             chooseLogin()
-        }, 15)
-        RejoinUi.add(accountPanel, RejoinUi.smallAction(this, "Manage saved logins  →") {
+        }, 21)
+        RejoinUi.add(body, RejoinUi.smallAction(this, "Manage saved logins  →") {
             startActivity(Intent(this, LoginsActivity::class.java))
-        }, 10)
+        }, 11)
 
-        RejoinUi.add(body, RejoinUi.smallAction(this, "Remove this trusted Wi-Fi") {
+        RejoinUi.add(body, RejoinUi.rule(this), 29)
+        val forget = RejoinUi.smallAction(this, "Forget this Wi-Fi") {
             confirmRemove()
-        }, 19)
-        RejoinUi.add(body, RejoinUi.label(this,
-            "Rejoin recognizes the exact Wi-Fi access point you saved. If your router changes its identity, save the new connection.",
-            12f, RejoinUi.muted), 13)
+        }
+        forget.setTextColor(RejoinUi.rose)
+        RejoinUi.add(body, forget, 18)
         refresh()
     }
 
@@ -84,13 +69,13 @@ class NetworkDetailsActivity : Activity() {
     private fun refresh() {
         val item = find() ?: run { finish(); return }
         label.text = item.label
-        identity.text = item.ssid + "\n" + item.bssid
+        identity.text = item.ssid + "  ·  Saved"
         val accounts = CredentialVault.list(this)
         val selected = if (item.loginId == null) {
             accounts.firstOrNull { it.id == CredentialVault.defaultId(this) }
         } else accounts.firstOrNull { it.id == item.loginId }
         login.text = when {
-            selected != null -> "✓  " + selected.label + " · Password saved"
+            selected != null -> "✓  " + selected.label + " · Saved"
             item.loginId != null -> "Assigned login missing"
             else -> "Default login not saved yet"
         }
