@@ -50,49 +50,48 @@ class LoginsActivity : Activity() {
         if (!::listing.isInitialized) return
         listing.removeAllViews()
         val accounts = CredentialVault.list(this)
-        addLoginButton.text = if (accounts.isEmpty()) "Save your login" else "Add another login"
         headline.text = when (accounts.size) {
-            0 -> "No password saved"
+            0 -> "No login saved"
             1 -> "✓  Password saved on this device"
-            else -> "✓  " + accounts.size + " logins saved securely"
+            else -> "✓  " + accounts.size + " logins saved on this device"
         }
+        addLoginButton.text = if (accounts.isEmpty()) "Save your login" else "Add login"
         if (accounts.isEmpty()) {
             RejoinUi.add(listing, RejoinUi.label(this,
-                "Save one login to use on your trusted Wi-Fi.", 14f, RejoinUi.muted), 18)
+                "Your saved login will be used for trusted Wi-Fi.", 13f, RejoinUi.muted), 19)
             return
         }
-        val default = CredentialVault.defaultId(this)
-        for ((i, account) in accounts.withIndex()) {
-            if (i > 0) RejoinUi.add(listing, RejoinUi.rule(this), 15)
-            val top = RejoinUi.row(this)
-            val details = RejoinUi.column(this)
-            top.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
-            RejoinUi.add(details, RejoinUi.label(this, account.label, 16f, RejoinUi.ink, true))
-            RejoinUi.add(details, RejoinUi.label(this,
-                if (account.id == default) "DEFAULT LOGIN" else "ADDITIONAL LOGIN",
-                10f, RejoinUi.jade, true), 7)
-            top.addView(RejoinUi.smallAction(this, "Edit  ›") {
-                showEditor(account)
-            })
-            RejoinUi.add(listing, top, 19)
-            RejoinUi.add(listing, RejoinUi.label(this,
-                "✓  Password saved · " + account.username, 12f, RejoinUi.muted), 7)
-            val buttons = RejoinUi.row(this)
-            if (account.id != default) {
-                val makeDefault = RejoinUi.smallAction(this, "Make default") {
-                    if (CredentialVault.setDefault(this, account.id)) {
-                        ActivityHistory.record(this, "Default login updated")
-                        refresh()
-                    }
-                }
-                buttons.addView(makeDefault, LinearLayout.LayoutParams(0, -2, 1f))
-            } else {
-                buttons.addView(RejoinUi.label(this, "Used by default",
-                    12f, RejoinUi.muted), LinearLayout.LayoutParams(0, -2, 1f))
+        val defaultId = CredentialVault.defaultId(this)
+        accounts.forEachIndexed { index, account ->
+            if (index > 0) RejoinUi.add(listing, RejoinUi.rule(this), 3)
+            val detail = when {
+                account.id == defaultId -> "Default login · Password saved"
+                else -> "Password saved"
             }
-            buttons.addView(RejoinUi.smallAction(this, "Remove") { confirmRemove(account) })
-            RejoinUi.add(listing, buttons, 8)
+            listing.addView(RejoinUi.navRow(this, account.label, detail) {
+                manageLogin(account, account.id == defaultId)
+            })
         }
+    }
+
+    private fun manageLogin(account: CredentialVault.SavedLogin, isDefault: Boolean) {
+        val choices = if (isDefault) arrayOf("Edit login", "Remove login")
+            else arrayOf("Edit login", "Make default", "Remove login")
+        AlertDialog.Builder(this).setTitle(account.label)
+            .setItems(choices) { _, which ->
+                when {
+                    which == 0 -> showEditor(account)
+                    isDefault && which == 1 -> confirmRemove(account)
+                    !isDefault && which == 1 -> {
+                        if (CredentialVault.setDefault(this, account.id)) {
+                            ActivityHistory.record(this, "Default login updated")
+                            refresh()
+                        }
+                    }
+                    else -> confirmRemove(account)
+                }
+            }
+            .setNegativeButton("Cancel", null).show()
     }
 
     private fun showEditor(existing: CredentialVault.SavedLogin?) {
