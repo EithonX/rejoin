@@ -22,6 +22,9 @@ class SettingsActivity : Activity() {
     private lateinit var recovery: LinearLayout
     private lateinit var advanced: LinearLayout
     private lateinit var advancedLink: TextView
+    private lateinit var backgroundTitle: TextView
+    private lateinit var backgroundDescription: TextView
+    private lateinit var backgroundLastRun: TextView
     private val worker = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,6 +85,19 @@ class SettingsActivity : Activity() {
             startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 Uri.parse("package:" + packageName)))
         }, 12)
+
+        heading(body, "BACKGROUND ACCESS", 28)
+        val bgCard = RejoinUi.inset(this)
+        RejoinUi.add(body, bgCard, 12)
+        backgroundTitle = RejoinUi.label(this, "Checking protection…", 16f, RejoinUi.ink, true)
+        RejoinUi.add(bgCard, backgroundTitle)
+        backgroundDescription = RejoinUi.label(this, "", 13f, RejoinUi.muted)
+        RejoinUi.add(bgCard, backgroundDescription, 9)
+        backgroundLastRun = RejoinUi.label(this, "", 12f, RejoinUi.muted)
+        RejoinUi.add(bgCard, backgroundLastRun, 12)
+        RejoinUi.add(bgCard, RejoinUi.action(this, "Review background access", false) {
+            backgroundHelp()
+        }, 17)
 
         heading(body, "ABOUT", 28)
         val aboutCard = RejoinUi.inset(this)
@@ -305,6 +321,47 @@ class SettingsActivity : Activity() {
         rebuildNetworks()
         rebuildLogins()
         rebuildModes()
+        if (::backgroundTitle.isInitialized) updateBackgroundHealth()
+    }
+
+    private fun updateBackgroundHealth() {
+        val health = BackgroundHealth.inspect(this)
+        backgroundTitle.text = health.title
+        backgroundDescription.text = health.description
+        val last = health.lastRun
+        backgroundLastRun.text = if (last <= 0L) {
+            "No background check recorded yet."
+        } else {
+            "Last background check: " +
+                java.text.DateFormat.getDateTimeInstance(
+                    java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                    .format(java.util.Date(last))
+        }
+    }
+
+    private fun backgroundHelp() {
+        val health = BackgroundHealth.inspect(this)
+        val note = when {
+            !health.backgroundLocation ->
+                "1. Open Rejoin's app permissions.\n2. Open Location.\n3. Choose 'Allow all the time'.\n\n" +
+                "Rejoin uses this only to recognize saved Wi-Fi while closed."
+            health.restricted || !health.batteryUnrestricted ->
+                "On Motorola, open Settings → Battery → Manage background apps → Rejoin " +
+                "and choose 'Always allow' if available. Also check Rejoin's Battery settings " +
+                "for unrestricted background activity.\n\nAndroid may still defer work during deep sleep."
+            else ->
+                "Rejoin's periodic Android job is installed. Checks are battery-managed " +
+                "and may run later during Doze. If automatic recovery stops, review Battery " +
+                "and Location permissions here."
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(health.title)
+            .setMessage(note)
+            .setNegativeButton("Close", null)
+            .setPositiveButton("Open app settings") { _, _ ->
+                startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:" + packageName)))
+            }.show()
     }
 
     override fun onResume() {
