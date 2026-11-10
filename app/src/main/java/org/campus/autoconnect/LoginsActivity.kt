@@ -20,51 +20,29 @@ class LoginsActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val root = RejoinUi.column(this).apply { setBackgroundColor(RejoinUi.canvas) }
-        val scroll = ScrollView(this)
+        val root = ScrollView(this).apply { setBackgroundColor(RejoinUi.canvas) }
         val body = RejoinUi.column(this).apply {
-            val side = RejoinUi.dp(this@LoginsActivity, 23)
-            setPadding(side, RejoinUi.dp(this@LoginsActivity, 25), side, side)
+            val d = RejoinUi.dp(this@LoginsActivity, 24)
+            setPadding(d, d, d, RejoinUi.dp(this@LoginsActivity, 32))
         }
-        scroll.addView(body)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, -1))
+        root.addView(body)
         setContentView(root)
         RejoinUi.applySystemBars(this, root)
 
-        val header = RejoinUi.row(this)
-        header.addView(RejoinUi.smallAction(this, "←") { finish() },
-            LinearLayout.LayoutParams(RejoinUi.dp(this, 38), -2))
-        header.addView(RejoinUi.label(this, "Saved logins", 27f, RejoinUi.ink, true),
-            LinearLayout.LayoutParams(0, -2, 1f))
-        RejoinUi.add(body, header)
-        RejoinUi.add(body, RejoinUi.label(this,
-            "Save once. Rejoin uses your default login for every trusted Wi-Fi, unless you choose otherwise.",
-            13f, RejoinUi.muted), 12)
+        RejoinUi.header(this, body, "Saved logins")
+        headline = RejoinUi.label(this, "No password saved", 15f, RejoinUi.muted)
+        RejoinUi.add(body, headline, 17)
 
-        val summary = RejoinUi.inset(this)
-        RejoinUi.add(body, summary, 25)
-        headline = RejoinUi.label(this, "Checking saved logins…", 17f, RejoinUi.ink, true)
-        RejoinUi.add(summary, headline)
-        RejoinUi.add(summary, RejoinUi.label(this,
-            "Passwords are encrypted locally and never shown after saving.",
-            12f, RejoinUi.muted), 9)
-        RejoinUi.add(summary, RejoinUi.label(this,
-            "Campus HTTP sign-in does not encrypt credentials in transit. Saving a login is an opt-in choice.",
-            12f, RejoinUi.amber), 13)
-        addLoginButton = RejoinUi.action(this, "Save a login", false) {
-            showEditor(null)
-        }
-        RejoinUi.add(summary, addLoginButton, 17)
+        addLoginButton = RejoinUi.action(this, "Save your login") { showEditor(null) }
+        RejoinUi.add(body, addLoginButton, 26)
 
-        val entries = RejoinUi.inset(this)
-        RejoinUi.add(body, entries, 15)
-        RejoinUi.add(entries, RejoinUi.label(this, "YOUR LOGINS", 11f,
-            RejoinUi.muted, true).apply { letterSpacing = .14f })
+        RejoinUi.section(body, "On this phone", 32)
         listing = RejoinUi.column(this)
-        RejoinUi.add(entries, listing, 12)
+        RejoinUi.add(body, listing, 8)
+
         RejoinUi.add(body, RejoinUi.label(this,
-            "The default login is used when a Wi-Fi has no special assignment.",
-            12f, RejoinUi.muted), 18)
+            "Campus sign-in uses HTTP, so passwords aren't encrypted in transit.",
+            12f, RejoinUi.amber), 25)
         refresh()
     }
 
@@ -80,12 +58,12 @@ class LoginsActivity : Activity() {
         }
         if (accounts.isEmpty()) {
             RejoinUi.add(listing, RejoinUi.label(this,
-                "Add your campus login to begin.", 14f, RejoinUi.muted), 12)
+                "Save one login to use on your trusted Wi-Fi.", 14f, RejoinUi.muted), 18)
             return
         }
         val default = CredentialVault.defaultId(this)
         for ((i, account) in accounts.withIndex()) {
-            if (i > 0) RejoinUi.add(listing, RejoinUi.rule(this), 17)
+            if (i > 0) RejoinUi.add(listing, RejoinUi.rule(this), 15)
             val top = RejoinUi.row(this)
             val details = RejoinUi.column(this)
             top.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
@@ -96,7 +74,7 @@ class LoginsActivity : Activity() {
             top.addView(RejoinUi.smallAction(this, "Edit  ›") {
                 showEditor(account)
             })
-            RejoinUi.add(listing, top, 14)
+            RejoinUi.add(listing, top, 19)
             RejoinUi.add(listing, RejoinUi.label(this,
                 "✓  Password saved · " + account.username, 12f, RejoinUi.muted), 7)
             val buttons = RejoinUi.row(this)
@@ -109,7 +87,7 @@ class LoginsActivity : Activity() {
                 }
                 buttons.addView(makeDefault, LinearLayout.LayoutParams(0, -2, 1f))
             } else {
-                buttons.addView(RejoinUi.label(this, "Used unless a router specifies another",
+                buttons.addView(RejoinUi.label(this, "Used by default",
                     12f, RejoinUi.muted), LinearLayout.LayoutParams(0, -2, 1f))
             }
             buttons.addView(RejoinUi.smallAction(this, "Remove") { confirmRemove(account) })
