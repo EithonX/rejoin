@@ -50,16 +50,14 @@ class NetworkDetailsActivity : Activity() {
         RejoinUi.add(body, RejoinUi.action(this, "Change login", false) {
             chooseLogin()
         }, 21)
-        RejoinUi.add(body, RejoinUi.smallAction(this, "Manage saved logins  →") {
+        RejoinUi.add(body, RejoinUi.smallAction(this, "Saved logins") {
             startActivity(Intent(this, LoginsActivity::class.java))
         }, 11)
 
         RejoinUi.add(body, RejoinUi.rule(this), 29)
-        val forget = RejoinUi.smallAction(this, "Forget this Wi-Fi") {
-            confirmRemove()
-        }
-        forget.setTextColor(RejoinUi.rose)
-        RejoinUi.add(body, forget, 18)
+        val forget = RejoinUi.navRow(this, "Forget this Wi-Fi",
+            "Stop using this router for automatic login") { confirmRemove() }
+        RejoinUi.add(body, forget, 12)
         refresh()
     }
 
