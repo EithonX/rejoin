@@ -32,20 +32,45 @@ object InternetVerifier {
         if (TrustedNetworks.find(context, snapshot) == null)
             return Result(State.UNKNOWN, "Not a trusted Wi-Fi; no test sent")
 
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val caps = cm.getNetworkCapabilities(snapshot.network)
-        val captive = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) == true
-        val validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        val connectivity = context.getSystemService(ConnectivityManager::class.java)
+        return resolveProbes(
+            publicHttp(snapshot.network),
+            https = { publicHttps(snapshot.network) },
+            wifiState = { androidState(connectivity.getNetworkCapabilities(snapshot.network)) }
+        )
+    }
 
-        publicHttp(snapshot.network)?.let { return it }
+    internal fun resolveProbes(http: Result?, https: () -> Result, wifiState: () -> State): Result {
+        if (http != null && http.state != State.UNSUPPORTED_PORTAL) return http
+        val secureCheck = https()
+        if (secureCheck.state != State.UNKNOWN && secureCheck.state != State.UNSUPPORTED_PORTAL) return secureCheck
 
-        // HTTPS fallbacks run only if the inexpensive HTTP check is inconclusive.
+        val redirect = http ?: secureCheck.takeIf { it.state == State.UNSUPPORTED_PORTAL }
+        val system = wifiState()
+        if (redirect != null) {
+            return if (system == State.ONLINE)
+                Result(State.ONLINE, "Android validated Wi-Fi after the connectivity check redirected")
+            else redirect
+        }
+        return if (system == State.PORTAL)
+            Result(State.PORTAL, "Android reports captive Wi-Fi; direct verification inconclusive")
+        else secureCheck
+    }
+
+    internal fun androidState(caps: NetworkCapabilities?): State = when {
+        caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) == true -> State.PORTAL
+        caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true -> State.ONLINE
+        else -> State.UNKNOWN
+    }
+
+    private fun publicHttps(network: Network): Result {
         val failures = mutableListOf<String>()
         var certificateFailure = false
+        var redirect: Result? = null
         for (ip in arrayOf("1.1.1.1", "1.0.0.1")) {
             var conn: HttpsURLConnection? = null
             try {
-                conn = snapshot.network.openConnection(URL("https://$ip/cdn-cgi/trace"))
+                conn = network.openConnection(URL("https://$ip/cdn-cgi/trace"))
                     as HttpsURLConnection
                 conn.connectTimeout = 2200
                 conn.readTimeout = 2200
@@ -67,7 +92,10 @@ object InternetVerifier {
                         return Result(State.ONLINE, "Verified public HTTPS on Wi-Fi (no DNS)")
                 }
                 if (code in 300..399) {
-                    redirectProblem(conn.getHeaderField("Location"))?.let { return it }
+                    redirectProblem(conn.getHeaderField("Location"))?.let {
+                        if (it.state == State.SECURE_PORTAL) return it
+                        redirect = it
+                    }
                 }
                 failures.add("HTTP $code")
             } catch (e: Exception) {
@@ -80,13 +108,10 @@ object InternetVerifier {
                 conn?.disconnect()
             }
         }
-        return if (certificateFailure)
-            Result(State.CERTIFICATE_ERROR, "Certificate verification failed during the HTTPS check")
-        else if (captive)
-            Result(State.PORTAL, "Android reports captive Wi-Fi; direct verification inconclusive")
-        else
-            Result(State.UNKNOWN, "Could not confirm internet or portal (system validated=$validated, " +
-                failures.take(2).joinToString(", ") + ")")
+        if (certificateFailure)
+            return Result(State.CERTIFICATE_ERROR, "Certificate verification failed during the HTTPS check")
+        return redirect ?: Result(State.UNKNOWN, "Could not confirm internet or portal (" +
+            failures.take(2).joinToString(", ") + ")")
     }
 
     private fun publicHttp(network: Network): Result? {
@@ -117,6 +142,7 @@ object InternetVerifier {
         } catch (_: Exception) { null }
         finally { try { socket?.close() } catch (_: Exception) {} }
     }
+
     internal fun interpretPublicHttp(headers: String, body: String): Result? {
         val status = headers.substringBefore("\r\n")
         if (status.contains(" 200 ") && body.contains("colo=") && body.contains("http="))
@@ -135,12 +161,13 @@ object InternetVerifier {
         }
         return null
     }
+
     private fun redirectProblem(location: String?): Result? {
         if (location.isNullOrBlank()) return null
         if (FortinetPortal.isSecureRedirect(location))
             return Result(State.SECURE_PORTAL, "Campus portal redirected to HTTPS")
         if (FortinetPortal.requestPath(location) == null)
-            return Result(State.UNSUPPORTED_PORTAL, "Sign-in redirected to an unrecognized address")
+            return Result(State.UNSUPPORTED_PORTAL, "Connectivity check redirected to an unrecognized address")
         return null
     }
 }

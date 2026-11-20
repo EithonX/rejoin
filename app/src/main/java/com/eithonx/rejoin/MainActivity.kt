@@ -80,7 +80,10 @@ class MainActivity : RejoinActivity() {
         val hasAnyAccount = hasAccount || (profile == null && CredentialVault.hasCredentials(this))
         val health = BackgroundHealth.inspect(this)
         val reading = if (wifi != null && profile != null) currentObservation(profile.id, wifi) else null
-        val state = reading?.state ?: wifi?.let { systemState(it.network) } ?: InternetVerifier.State.UNKNOWN
+        val reportedState = wifi?.let { systemState(it.network) } ?: InternetVerifier.State.UNKNOWN
+        val state = reading?.state?.takeUnless {
+            it == InternetVerifier.State.UNSUPPORTED_PORTAL && reportedState == InternetVerifier.State.ONLINE
+        } ?: reportedState
         val checkedAt = reading?.at ?: 0L
         val outcome = reading?.outcome
 
@@ -125,8 +128,9 @@ class MainActivity : RejoinActivity() {
             state == InternetVerifier.State.CERTIFICATE_ERROR -> HomeStatus("Certificate verification failed",
                 "If Android also shows a certificate warning, check with campus IT before entering your password.",
                 ConnectionTone.ERROR, "Open Wi-Fi settings", ::openWifiSettings)
-            state == InternetVerifier.State.UNSUPPORTED_PORTAL -> HomeStatus("Wi-Fi sign-in address changed",
-                "Use Android’s Wi-Fi sign-in for this connection.", ConnectionTone.ATTENTION,
+            state == InternetVerifier.State.UNSUPPORTED_PORTAL -> HomeStatus("Check Wi-Fi sign-in",
+                "Rejoin couldn’t verify the sign-in page. Check this network in Android’s Wi-Fi settings.",
+                ConnectionTone.ATTENTION,
                 "Open Wi-Fi settings", ::openWifiSettings)
             !hasAccount -> HomeStatus("Login needed",
                 "Choose the login you use on this Wi-Fi.", ConnectionTone.ATTENTION, "Set up login") {
@@ -233,16 +237,8 @@ class MainActivity : RejoinActivity() {
         }
     }
 
-    private fun systemState(network: Network): InternetVerifier.State {
-        val caps = connectivity.getNetworkCapabilities(network)
-        return when {
-            caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) == true ->
-                InternetVerifier.State.PORTAL
-            caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true ->
-                InternetVerifier.State.ONLINE
-            else -> InternetVerifier.State.UNKNOWN
-        }
-    }
+    private fun systemState(network: Network) =
+        InternetVerifier.androidState(connectivity.getNetworkCapabilities(network))
 
     override fun onStart() {
         super.onStart()

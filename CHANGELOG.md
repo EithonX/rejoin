@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.0-rc4
+
+- Verify internet access before showing a Wi-Fi sign-in warning after an unexpected redirect. Auto sign-in still pauses when the portal can’t be verified.
+
 ## 2.4.0-rc3
 
 - Open the sign-in address detected on saved Wi-Fi and pause automatic attempts when a saved login is rejected.
