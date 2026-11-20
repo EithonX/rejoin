@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -21,8 +22,10 @@ import java.security.MessageDigest
 import java.util.concurrent.Executors
 
 internal object ReleaseUpdates {
-    enum class Check { IDLE, CHECKING, CURRENT, INCOMPATIBLE, AVAILABLE, NO_RELEASE, UNAVAILABLE }
-    enum class DownloadError { NETWORK, VERIFICATION }
+    private const val CHECK_INTERVAL_MS = 5 * 60 * 1000L
+
+    enum class Check { IDLE, CHECKING, CURRENT, AVAILABLE, NO_RELEASE, UNAVAILABLE }
+    enum class DownloadError { NETWORK, VERIFICATION, INCOMPATIBLE }
 
     var available by mutableStateOf<ReleaseUpdate?>(null)
         private set
@@ -34,45 +37,56 @@ internal object ReleaseUpdates {
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
     private var loaded = false
+    private var lastAttempt: Long? = null
+    private var lastReconnectAttempt: Long? = null
+    private var retryOnFailure = false
 
-    fun refresh(context: Context, manual: Boolean = false) {
-        val prefs = context.getSharedPreferences("updates", Context.MODE_PRIVATE)
+    fun refresh(context: Context, manual: Boolean = false, connectionRestored: Boolean = false) {
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences("updates", Context.MODE_PRIVATE)
         if (!loaded) {
             loaded = true
-            available = prefs.getString("cached", null)?.let { json ->
+            available = prefs.getString("github_asset_v1", null)?.let { json ->
                 runCatching { metadata(JSONObject(json)) }.getOrNull()
-            }?.takeIf { it.isNewerAndCompatible(BuildConfig.VERSION_CODE, Build.VERSION.SDK_INT) }
+            }?.takeIf { it.isNewerThan(BuildConfig.VERSION_NAME) }
             if (available != null) check = Check.AVAILABLE
         }
-        if (check == Check.CHECKING || downloading) return
-        val now = System.currentTimeMillis()
-        if (!manual && now - prefs.getLong("attempted", 0L) in 0L until 86_400_000L) return
-        prefs.edit().putLong("attempted", now).apply()
+        if (downloading) return
+        if (check == Check.CHECKING) {
+            retryOnFailure = retryOnFailure || connectionRestored
+            return
+        }
+        if (connectionRestored && check != Check.UNAVAILABLE) return
+        val now = SystemClock.elapsedRealtime()
+        val last = if (connectionRestored) lastReconnectAttempt else lastAttempt
+        if (!manual && last != null && now - last < CHECK_INTERVAL_MS) return
+        lastAttempt = now
+        if (connectionRestored) lastReconnectAttempt = now
         check = Check.CHECKING
         worker.execute {
             val result = runCatching(::fetchLatest)
             main.post {
                 if (result.isSuccess) {
                     val release = result.getOrNull()
-                    val compatible = release?.takeIf {
-                        it.isNewerAndCompatible(BuildConfig.VERSION_CODE, Build.VERSION.SDK_INT)
-                    }
-                    available = compatible
-                    prefs.edit().putString("cached", compatible?.let(::json)?.toString()).apply()
+                    val update = release?.takeIf { it.isNewerThan(BuildConfig.VERSION_NAME) }
+                    available = update
+                    prefs.edit().putString("github_asset_v1", update?.let(::json)?.toString()).apply()
                     check = when {
-                        compatible != null -> Check.AVAILABLE
+                        update != null -> Check.AVAILABLE
                         release == null -> Check.NO_RELEASE
-                        release.versionCode > BuildConfig.VERSION_CODE -> Check.INCOMPATIBLE
                         else -> Check.CURRENT
                     }
                 } else check = if (result.exceptionOrNull() is FeedUnavailable) Check.NO_RELEASE
                     else Check.UNAVAILABLE
+                val retry = retryOnFailure
+                retryOnFailure = false
+                if (retry && check == Check.UNAVAILABLE) refresh(app, connectionRestored = true)
             }
         }
     }
 
     fun download(context: Context, update: ReleaseUpdate, complete: (File?, DownloadError?) -> Unit) {
-        if (downloading || !update.isNewerAndCompatible(BuildConfig.VERSION_CODE, Build.VERSION.SDK_INT)) return
+        if (downloading || !update.isNewerThan(BuildConfig.VERSION_NAME)) return
         downloading = true
         val app = context.applicationContext
         worker.execute {
@@ -82,6 +96,7 @@ internal object ReleaseUpdates {
                 complete(result.getOrNull(), when (result.exceptionOrNull()) {
                     null -> null
                     is InvalidApk -> DownloadError.VERIFICATION
+                    is IncompatibleApk -> DownloadError.INCOMPATIBLE
                     else -> DownloadError.NETWORK
                 })
             }
@@ -93,42 +108,28 @@ internal object ReleaseUpdates {
             JSONArray(readText(it, 1_000_000))
         }
         val includePrerelease = '-' in BuildConfig.VERSION_NAME
-        val candidates = (0 until releases.length()).mapNotNull { releases.optJSONObject(it) }
-            .filter { release ->
-                !release.optBoolean("draft") &&
-                    (includePrerelease || !release.optBoolean("prerelease")) &&
-                    ReleaseUpdate.validTag(release.optString("tag_name")) &&
-                    hasUpdateAssets(release.optJSONArray("assets"))
-            }.sortedByDescending { it.optString("published_at") }
-
-        // Only check a bounded number of release descriptors, including fallback for newer SDKs.
-        var latest: ReleaseUpdate? = null
-        for (release in candidates.take(3)) {
-            val tag = release.optString("tag_name")
-            val update = get("$RELEASES_PAGE/download/$tag/$UPDATE_METADATA") {
-                metadata(JSONObject(readText(it, 4096)))
-            } ?: throw IOException("Invalid update metadata")
-            if (update.tag != tag) throw IOException("Release tag mismatch")
-            if (latest == null || update.versionCode > latest.versionCode) latest = update
-            if (update.isNewerAndCompatible(BuildConfig.VERSION_CODE, Build.VERSION.SDK_INT)) return update
+        val candidates = buildList {
+            for (i in 0 until releases.length()) {
+                val release = releases.optJSONObject(i) ?: continue
+                if (release.optBoolean("draft") || (!includePrerelease && release.optBoolean("prerelease"))) continue
+                val assets = release.optJSONArray("assets") ?: continue
+                for (j in 0 until assets.length()) {
+                    val asset = assets.optJSONObject(j) ?: continue
+                    if (asset.optString("name") != UPDATE_APK || asset.optString("state") != "uploaded") continue
+                    ReleaseUpdate.parse(release.optString("tag_name"), asset.optLong("size"),
+                        asset.optString("digest"))?.let(::add)
+                }
+            }
         }
-        return latest
-    }
-
-    private fun hasUpdateAssets(assets: JSONArray?): Boolean {
-        if (assets == null) return false
-        val names = (0 until assets.length()).mapNotNull { assets.optJSONObject(it)?.optString("name") }
-        return UPDATE_APK in names && UPDATE_METADATA in names
+        return ReleaseUpdate.latest(candidates)
     }
 
     private fun metadata(json: JSONObject) = ReleaseUpdate.parse(
-        json.optString("tag"), json.optInt("versionCode"), json.optInt("minSdk"),
-        json.optLong("size"), json.optString("sha256")
+        json.optString("tag"), json.optLong("size"), json.optString("digest")
     )
 
     private fun json(update: ReleaseUpdate) = JSONObject()
-        .put("tag", update.tag).put("versionCode", update.versionCode).put("minSdk", update.minSdk)
-        .put("size", update.size).put("sha256", update.sha256)
+        .put("tag", update.tag).put("size", update.size).put("digest", "sha256:${update.sha256}")
 
     private fun verifiedApk(context: Context, update: ReleaseUpdate): File {
         val folder = File(context.cacheDir, "updates")
@@ -146,9 +147,8 @@ internal object ReleaseUpdates {
                 }
             }
             val hash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
-            if (count != update.size || hash != update.sha256 || !matchesInstalled(context, partial, update)) {
-                throw InvalidApk()
-            }
+            if (count != update.size || hash != update.sha256) throw InvalidApk()
+            verifyPackage(context, partial, update)
             if (!partial.renameTo(apk)) throw IOException("Could not save verified update")
             return apk
         } finally {
@@ -157,11 +157,11 @@ internal object ReleaseUpdates {
     }
 
     @Suppress("DEPRECATION")
-    private fun matchesInstalled(context: Context, apk: File, update: ReleaseUpdate): Boolean {
+    private fun verifyPackage(context: Context, apk: File, update: ReleaseUpdate) {
         val pm = context.packageManager
         val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES
             else PackageManager.GET_SIGNATURES
-        val archive = pm.getPackageArchiveInfo(apk.absolutePath, flags) ?: return false
+        val archive = pm.getPackageArchiveInfo(apk.absolutePath, flags) ?: throw InvalidApk()
         val installed = pm.getPackageInfo(context.packageName, flags)
         fun code(info: PackageInfo): Long = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode
             else info.versionCode.toLong()
@@ -169,9 +169,12 @@ internal object ReleaseUpdates {
             info.signingInfo?.apkContentsSigners.orEmpty().toSet()
             else info.signatures.orEmpty().toSet()
         val signer = signatures(installed)
-        return archive.packageName == installed.packageName && code(archive) == update.versionCode.toLong() &&
-            code(archive) > code(installed) && archive.versionName == update.version &&
-            signer.isNotEmpty() && signatures(archive) == signer
+        if (archive.packageName != installed.packageName || code(archive) <= code(installed) ||
+            archive.versionName != update.version || signer.isEmpty() || signatures(archive) != signer) {
+            throw InvalidApk()
+        }
+        if (Build.VERSION.SDK_INT >= 24 &&
+            (archive.applicationInfo?.minSdkVersion ?: 0) > Build.VERSION.SDK_INT) throw IncompatibleApk()
     }
 
     private fun readText(input: InputStream, maxSize: Long): String {
@@ -225,4 +228,5 @@ internal object ReleaseUpdates {
 
     private class FeedUnavailable : IOException()
     private class InvalidApk : IOException()
+    private class IncompatibleApk : IOException()
 }
