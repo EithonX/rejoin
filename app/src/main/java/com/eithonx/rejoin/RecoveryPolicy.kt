@@ -5,22 +5,27 @@ import android.content.Context
 /** Deterministic policies; testable without Android framework dependencies. */
 object RecoveryPolicy {
     enum class Mode { BALANCED, RESPONSIVE }
-    enum class Outcome { HEALTHY, RECOVERED, PORTAL, UNKNOWN, FAILED }
+    enum class Outcome {
+        HEALTHY, RECOVERED, PORTAL, UNKNOWN, FAILED, REJECTED, COOLDOWN,
+        SECURE_PORTAL, CERTIFICATE_ERROR, UNSUPPORTED_PORTAL, PORTAL_FORM_FAILED, VERIFY_FAILED;
+
+        val stopsAutomaticSubmission: Boolean
+            get() = this in listOf(REJECTED, SECURE_PORTAL, CERTIFICATE_ERROR, UNSUPPORTED_PORTAL)
+    }
 
     fun minutes(mode: Mode, outcome: Outcome): Int = when (mode) {
         Mode.BALANCED -> when (outcome) {
             Outcome.HEALTHY -> 30
             Outcome.RECOVERED -> 25
-            Outcome.PORTAL -> 15
+            Outcome.PORTAL, Outcome.COOLDOWN -> 15
             Outcome.UNKNOWN -> 20
-            Outcome.FAILED -> 30
+            else -> 30
         }
         Mode.RESPONSIVE -> when (outcome) {
             Outcome.HEALTHY -> 15
             Outcome.RECOVERED -> 15
-            Outcome.PORTAL -> 15
-            Outcome.UNKNOWN -> 15
-            Outcome.FAILED -> 20
+            Outcome.PORTAL, Outcome.COOLDOWN, Outcome.UNKNOWN -> 15
+            else -> 20
         }
     }
 

@@ -13,6 +13,19 @@ class FortinetPortalTest {
         assertEquals("/fgtauth?fresh-token", result?.portalPath)
     }
 
+    @Test fun flagsRedirectsThatNeedAndroidSignIn() {
+        val secure = InternetVerifier.interpretPublicHttp(
+            "HTTP/1.1 302 Found\r\nLocation: https://172.16.2.1:1000/fgtauth", ""
+        )
+        val changed = InternetVerifier.interpretPublicHttp(
+            "HTTP/1.1 302 Found\r\nLocation: https://other.test/portal", ""
+        )
+        assertEquals(InternetVerifier.State.SECURE_PORTAL, secure?.state)
+        assertEquals(InternetVerifier.State.UNSUPPORTED_PORTAL, changed?.state)
+        assertNull(secure?.portalPath)
+        assertNull(changed?.portalPath)
+    }
+
     @Test fun validatesFormActionsAndDestinations() {
         assertEquals("/", FortinetPortal.requestPath("/", fromGateway = true))
         assertEquals("/login?next=home", FortinetPortal.requestPath("/login?next=home", fromGateway = true))

@@ -23,7 +23,11 @@ object CredentialVault {
     data class Credentials(val username: String, val password: String)
     data class SavedLogin(val id: String, val label: String, val username: String)
 
-    private data class Record(val id: String, val label: String, val user: String, val password: String)
+    internal class ResolvedLogin(val id: String, val revision: String, val username: String, val password: String)
+
+    private data class Record(
+        val id: String, val label: String, val user: String, val password: String, val revision: String = id
+    )
     private data class Vault(val defaultId: String?, val items: List<Record>)
 
     private const val ALIAS = "campus_autoconnect_aes_v1"
@@ -79,7 +83,7 @@ object CredentialVault {
                 val pass = obj.optString("password")
                 if (id.isBlank() || user.isBlank() || pass.isBlank()) continue
                 items.add(Record(id, obj.optString("label").ifBlank { "Wi-Fi login" },
-                    user, pass))
+                    user, pass, obj.optString("revision").ifBlank { id }))
             }
             Vault(json.optString("defaultId").takeIf { it.isNotBlank() }, items)
         } catch (_: Exception) { null }
@@ -91,7 +95,7 @@ object CredentialVault {
         val accounts = JSONArray()
         for (a in state.items) {
             accounts.put(JSONObject().put("id", a.id).put("label", a.label)
-                .put("user", a.user).put("password", a.password))
+                .put("user", a.user).put("password", a.password).put("revision", a.revision))
         }
         json.put("accounts", accounts)
         val clear = json.toString().toByteArray(Charsets.UTF_8)
@@ -149,7 +153,10 @@ object CredentialVault {
         val password = newPassword.ifBlank { existing?.password ?: "" }
         if (password.isEmpty()) return false
         if (existing == null && current.items.size >= MAX_ACCOUNTS) return false
-        val entry = Record(existing?.id ?: UUID.randomUUID().toString(), label, uid, password)
+        val entry = if (existing != null && existing.user == uid && existing.password == password)
+            existing.copy(label = label)
+        else Record(existing?.id ?: UUID.randomUUID().toString(), label, uid, password,
+            UUID.randomUUID().toString())
         val next = if (existing != null)
             current.items.map { if (it.id == existing.id) entry else it }
         else current.items + entry
@@ -164,6 +171,8 @@ object CredentialVault {
         val items = state.items.filterNot { it.id == id }
         val next = items.firstOrNull { it.id == state.defaultId }?.id ?: items.firstOrNull()?.id
         if (!store(context, Vault(next, items))) return false
+        context.getSharedPreferences("profile", Context.MODE_PRIVATE).edit()
+            .remove(rejectionKey(id)).remove(attemptKey(id)).remove(attemptKey(id) + "_revision").apply()
         TrustedNetworks.unassignDeletedLogin(context, id)
         return true
     }
@@ -175,13 +184,48 @@ object CredentialVault {
         }
 
     @Synchronized
-    fun resolve(context: Context, profile: TrustedNetworks.Profile): Credentials? {
+    internal fun resolve(context: Context, profile: TrustedNetworks.Profile): ResolvedLogin? {
         val state = load(context) ?: return null
         val id = LoginSelection.choose(profile.loginId, state.defaultId,
             state.items.map { it.id })
         // An explicitly linked account that has gone missing must never silently
         // submit a different account's password.
-        return state.items.firstOrNull { it.id == id }?.let { Credentials(it.user, it.password) }
+        return state.items.firstOrNull { it.id == id }?.let {
+            ResolvedLogin(it.id, it.revision, it.user, it.password)
+        }
+    }
+
+    private fun rejectionKey(id: String) = "login_rejection_$id"
+    private fun attemptKey(id: String) = "login_attempt_$id"
+
+    internal fun wasRejected(context: Context, login: ResolvedLogin): Boolean =
+        context.getSharedPreferences("profile", Context.MODE_PRIVATE)
+            .getString(rejectionKey(login.id), null) == login.revision
+
+    @Synchronized
+    internal fun recordRejection(context: Context, login: ResolvedLogin, rejected: Boolean) {
+        val current = load(context)?.items?.firstOrNull { it.id == login.id } ?: return
+        if (current.revision != login.revision) return
+        val edit = context.getSharedPreferences("profile", Context.MODE_PRIVATE).edit()
+        if (rejected) edit.putString(rejectionKey(login.id), login.revision)
+        else edit.remove(rejectionKey(login.id))
+        edit.apply()
+    }
+
+    internal fun lastAttempt(context: Context, login: ResolvedLogin): Long {
+        val prefs = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
+        val key = attemptKey(login.id)
+        return if (prefs.getString(key + "_revision", null) == login.revision) prefs.getLong(key, 0L)
+            else 0L
+    }
+
+    internal fun recordAttempt(context: Context, login: ResolvedLogin, time: Long) {
+        val prefs = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
+        val key = attemptKey(login.id)
+        prefs.edit().putLong(key, time).putString(key + "_revision", login.revision)
+            .putLong("last_attempt", time)
+            .putLong("login_attempts_total", prefs.getLong("login_attempts_total", 0L) + 1L)
+            .apply()
     }
 
     fun hasLoginFor(context: Context, profile: TrustedNetworks.Profile): Boolean =

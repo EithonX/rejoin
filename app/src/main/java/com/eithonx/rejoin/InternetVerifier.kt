@@ -9,7 +9,9 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import java.security.cert.CertificateException
 import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLPeerUnverifiedException
 
 /**
  * Bounded IP-only check tied to exactly the trusted Wi-Fi Network.
@@ -21,7 +23,7 @@ import javax.net.ssl.HttpsURLConnection
  * We never send credentials here, never resolve DNS, and never ignore TLS.
  */
 object InternetVerifier {
-    enum class State { ONLINE, PORTAL, UNKNOWN }
+    enum class State { ONLINE, PORTAL, SECURE_PORTAL, CERTIFICATE_ERROR, UNSUPPORTED_PORTAL, UNKNOWN }
     class Result(val state: State, val details: String, internal val portalPath: String? = null)
 
     fun check(context: Context, requiredNetwork: Network? = null): Result {
@@ -39,6 +41,7 @@ object InternetVerifier {
 
         // HTTPS fallbacks run only if the inexpensive HTTP check is inconclusive.
         val failures = mutableListOf<String>()
+        var certificateFailure = false
         for (ip in arrayOf("1.1.1.1", "1.0.0.1")) {
             var conn: HttpsURLConnection? = null
             try {
@@ -63,14 +66,23 @@ object InternetVerifier {
                     if (body.contains("colo=") && body.contains("http="))
                         return Result(State.ONLINE, "Verified public HTTPS on Wi-Fi (no DNS)")
                 }
+                if (code in 300..399) {
+                    redirectProblem(conn.getHeaderField("Location"))?.let { return it }
+                }
                 failures.add("HTTP $code")
             } catch (e: Exception) {
+                if (e is SSLPeerUnverifiedException ||
+                    generateSequence<Throwable>(e) { it.cause }.take(8).any { it is CertificateException }) {
+                    certificateFailure = true
+                }
                 failures.add(e.javaClass.simpleName)
             } finally {
                 conn?.disconnect()
             }
         }
-        return if (captive)
+        return if (certificateFailure)
+            Result(State.CERTIFICATE_ERROR, "Certificate verification failed during the HTTPS check")
+        else if (captive)
             Result(State.PORTAL, "Android reports captive Wi-Fi; direct verification inconclusive")
         else
             Result(State.UNKNOWN, "Could not confirm internet or portal (system validated=$validated, " +
@@ -112,11 +124,23 @@ object InternetVerifier {
 
         val location = headers.lineSequence()
             .firstOrNull { it.startsWith("Location:", true) }?.substringAfter(':')?.trim()
+        val code = status.substringAfter(' ').substringBefore(' ').toIntOrNull() ?: 0
+        if (code in 300..399) {
+            redirectProblem(location)?.let { return it }
+        }
         val path = FortinetPortal.redirectPath(location, body)
         if (path != null || body.contains("Firewall Authentication", true) ||
             (body.contains("name=\"magic\"", true) && body.contains("password", true))) {
             return Result(State.PORTAL, "Sign-in required on this Wi-Fi", path)
         }
+        return null
+    }
+    private fun redirectProblem(location: String?): Result? {
+        if (location.isNullOrBlank()) return null
+        if (FortinetPortal.isSecureRedirect(location))
+            return Result(State.SECURE_PORTAL, "Campus portal redirected to HTTPS")
+        if (FortinetPortal.requestPath(location) == null)
+            return Result(State.UNSUPPORTED_PORTAL, "Sign-in redirected to an unrecognized address")
         return null
     }
 }
