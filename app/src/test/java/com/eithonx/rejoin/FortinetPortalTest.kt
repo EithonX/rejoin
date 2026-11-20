@@ -1,0 +1,25 @@
+package com.eithonx.rejoin
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class FortinetPortalTest {
+    @Test fun usesTheCurrentRedirect() {
+        val result = InternetVerifier.interpretPublicHttp(
+            "HTTP/1.1 302 Found\r\nLocation: http://172.16.2.1:1000/fgtauth?fresh-token", ""
+        )
+        assertEquals(InternetVerifier.State.PORTAL, result?.state)
+        assertEquals("/fgtauth?fresh-token", result?.portalPath)
+    }
+
+    @Test fun validatesFormActionsAndDestinations() {
+        assertEquals("/", FortinetPortal.requestPath("/", fromGateway = true))
+        assertEquals("/login?next=home", FortinetPortal.requestPath("/login?next=home", fromGateway = true))
+        assertNull(FortinetPortal.requestPath("http://example.test:1000/fgtauth"))
+        assertNull(FortinetPortal.requestPath("//example.test/login", fromGateway = true))
+        assertNull(FortinetPortal.requestPath("http://user@172.16.2.1:1000/login"))
+        assertNull(FortinetPortal.requestPath("http://172.16.2.1:1000/login/../fgtauth"))
+        assertNull(FortinetPortal.requestPath("https://172.16.2.1:1000/login"))
+    }
+}

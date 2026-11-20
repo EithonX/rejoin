@@ -5,7 +5,6 @@ import android.net.Network
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -14,8 +13,8 @@ import java.nio.charset.StandardCharsets
  * explicitly trusted Wi-Fi. Does not blindly follow cross-host redirects.
  */
 object FortinetLoginV2 {
-    private const val GATEWAY = "172.16.2.1"
-    private const val PORT = 1000
+    private const val GATEWAY = FortinetPortal.HOST
+    private const val PORT = FortinetPortal.PORT
     private const val CHECK_HOST = "connectivitycheck.gstatic.com"
 
     data class Outcome(val attempted: Boolean, val summary: String)
@@ -141,28 +140,6 @@ object FortinetLoginV2 {
             .map { (it["name"] ?: "") to htmlUnescape(it["value"] ?: "") }
             .toList()
 
-    private fun gatewayPath(url: String): String? {
-        return try {
-            val uri = URI(htmlUnescape(url).trim().replace(" ", "%20"))
-            if (!uri.scheme.equals("http", true) ||
-                uri.host != GATEWAY || uri.port != PORT) return null
-            val path = uri.rawPath.ifBlank { "/" }
-            if (!(path == "/" || path.startsWith("/login") || path.startsWith("/fgtauth") ||
-                    path.startsWith("/portal"))) return null
-            path + (if (uri.rawQuery.isNullOrEmpty()) "" else "?" + uri.rawQuery)
-        } catch (_: Exception) { null }
-    }
-
-    private fun redirectFrom(reply: Reply): String? {
-        val header = reply.header("Location")
-        if (header.isNotBlank()) {
-            gatewayPath(header)?.let { return it }
-        }
-        val embedded = Regex("""http://172\.16\.2\.1:1000/[^\s"'<>\\]+""", RegexOption.IGNORE_CASE)
-            .find(reply.body)?.value
-        return embedded?.let { gatewayPath(it) }
-    }
-
     private data class Page(val reply: Reply, val source: String, val cookies: String)
 
     private fun hasFreshMagic(html: String): Boolean {
@@ -171,7 +148,22 @@ object FortinetLoginV2 {
             ?.second?.isNotBlank() == true
     }
 
-    private fun getPage(network: Network, context: Context, report: (String) -> Unit): Page? {
+    private fun getPage(
+        network: Network,
+        context: Context,
+        portalPath: String?,
+        report: (String) -> Unit
+    ): Page? {
+        fun open(path: String, source: String): Page? {
+            val reply = http(network, GATEWAY, PORT, GATEWAY, path) ?: return null
+            return if (reply.code == 200 && hasFreshMagic(reply.body)) Page(reply, source, reply.cookie())
+                else null
+        }
+
+        portalPath?.let { FortinetPortal.requestPath(it, fromGateway = true) }?.let { path ->
+            report("Opening the detected sign-in page")
+            open(path, "detected redirect")?.let { return it }
+        }
         val pref = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
         val cachedIp = pref.getString("probe_ip", null)
         if (cachedIp != null && validIpv4(cachedIp)) {
@@ -179,37 +171,31 @@ object FortinetLoginV2 {
             val start = http(network, cachedIp, 80, CHECK_HOST, "/generate_204")
             if (start != null) {
                 if (start.code == 204) return null // Someone has already restored internet
-                val path = redirectFrom(start)
-                if (path != null) {
-                    val redirected = http(network, GATEWAY, PORT, GATEWAY, path)
-                    if (redirected?.code == 200 && hasFreshMagic(redirected.body)) {
-                        return Page(redirected, "captive redirect", redirected.cookie())
-                    }
-                }
+                val path = FortinetPortal.redirectPath(start.header("Location"), start.body)
+                if (path != null) open(path, "captive redirect")?.let { return it }
                 if (start.code == 200 && hasFreshMagic(start.body)) {
                     return Page(start, "intercepted HTML", start.cookie())
                 }
             }
         }
         report("Opening the sign-in page")
-        val direct = http(network, GATEWAY, PORT, GATEWAY, "/login?") ?: return null
-        return if (direct.code == 200 && hasFreshMagic(direct.body))
-            Page(direct, "direct login", direct.cookie()) else null
+        return open("/login?", "direct login")
     }
 
     fun submitOnce(
         context: Context, network: Network,
-        username: String, password: String, report: (String) -> Unit = {}
+        username: String, password: String, report: (String) -> Unit = {},
+        portalPath: String? = null
     ): Outcome {
         report("Starting a new sign-in session")
-        val page = getPage(network, context, report)
+        val page = getPage(network, context, portalPath, report)
             ?: return Outcome(false, "No usable fresh magic token; no password sent. Login page or redirect unavailable.")
         val form = Regex("""<form\b[^>]*>""", RegexOption.IGNORE_CASE)
             .find(page.reply.body)?.value
             ?: return Outcome(false, "No login form detected; no password sent")
         val formAttrs = attrs(form)
         val action = formAttrs["action"] ?: "/"
-        val target = if (action == "/") "/" else gatewayPath(action)
+        val target = FortinetPortal.requestPath(htmlUnescape(action), fromGateway = true)
         if (!formAttrs["method"].equals("post", true) || target == null) {
             return Outcome(false, "Unexpected form destination; no password sent")
         }

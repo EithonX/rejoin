@@ -74,6 +74,7 @@ object SessionEngine {
                 prefs.edit().remove("manual_test_until").apply()
                 return finish("Internet online; no login necessary")
             }
+            var portalPath = initial.portalPath
             if (initial.state != InternetVerifier.State.PORTAL && !explicitlyLoggedOut) {
                 return finish("Network state uncertain; no password sent: " + initial.details)
             }
@@ -95,6 +96,7 @@ object SessionEngine {
                     return finish("Internet online; another device restored access")
                 if (again.state != InternetVerifier.State.PORTAL)
                     return finish("Portal no longer confirmed; no password sent")
+                portalPath = again.portalPath ?: portalPath
             }
 
             // Validate identity again immediately before submitting credentials.
@@ -115,7 +117,7 @@ object SessionEngine {
 
             progress("Signing in")
             val submitted = FortinetLoginV2.submitOnce(
-                context, snapshot.network, account.username, account.password, progress
+                context, snapshot.network, account.username, account.password, progress, portalPath
             )
             if (!submitted.attempted)
                 return finish("Sign-in not submitted: " + submitted.summary)

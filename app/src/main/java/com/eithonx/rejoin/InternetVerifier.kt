@@ -7,7 +7,6 @@ import android.net.NetworkCapabilities
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.net.URI
 import java.net.URL
 import java.nio.charset.StandardCharsets
 import javax.net.ssl.HttpsURLConnection
@@ -23,7 +22,7 @@ import javax.net.ssl.HttpsURLConnection
  */
 object InternetVerifier {
     enum class State { ONLINE, PORTAL, UNKNOWN }
-    data class Result(val state: State, val details: String)
+    class Result(val state: State, val details: String, internal val portalPath: String? = null)
 
     fun check(context: Context, requiredNetwork: Network? = null): Result {
         val snapshot = WifiProbe.current(context, requiredNetwork)
@@ -36,11 +35,7 @@ object InternetVerifier {
         val captive = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) == true
         val validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
 
-        val quick = publicHttp(snapshot.network)
-        if (quick == State.ONLINE)
-            return Result(State.ONLINE, "Public internet verified on Wi-Fi (one IP-only request)")
-        if (quick == State.PORTAL)
-            return Result(State.PORTAL, "Sign-in required on this Wi-Fi")
+        publicHttp(snapshot.network)?.let { return it }
 
         // HTTPS fallbacks run only if the inexpensive HTTP check is inconclusive.
         val failures = mutableListOf<String>()
@@ -55,7 +50,16 @@ object InternetVerifier {
                 conn.useCaches = false
                 val code = conn.responseCode
                 if (code == 200) {
-                    val body = conn.inputStream.bufferedReader().use { it.readText().take(2048) }
+                    val body = conn.inputStream.bufferedReader().use {
+                        val buffer = CharArray(2048)
+                        var count = 0
+                        while (count < buffer.size) {
+                            val read = it.read(buffer, count, buffer.size - count)
+                            if (read <= 0) break
+                            count += read
+                        }
+                        String(buffer, 0, count)
+                    }
                     if (body.contains("colo=") && body.contains("http="))
                         return Result(State.ONLINE, "Verified public HTTPS on Wi-Fi (no DNS)")
                 }
@@ -73,7 +77,7 @@ object InternetVerifier {
                 failures.take(2).joinToString(", ") + ")")
     }
 
-    private fun publicHttp(network: Network): State? {
+    private fun publicHttp(network: Network): Result? {
         var socket: java.net.Socket? = null
         return try {
             socket = network.socketFactory.createSocket()
@@ -97,20 +101,22 @@ object InternetVerifier {
             val response = out.toString(StandardCharsets.ISO_8859_1.name())
             val headers = response.substringBefore("\r\n\r\n")
             val body = response.substringAfter("\r\n\r\n", "")
-            val status = headers.substringBefore("\r\n")
-            if (status.contains(" 200 ") && body.contains("colo=") && body.contains("http="))
-                return State.ONLINE
-
-            val location = headers.lineSequence()
-                .firstOrNull { it.startsWith("Location:", true) }?.substringAfter(':')?.trim()
-            val uri = try { URI(location) } catch (_: Exception) { null }
-            if (uri?.host == "172.16.2.1" && uri.port == 1000)
-                return State.PORTAL
-            if (body.contains("Firewall Authentication", true) ||
-                (body.contains("name=\"magic\"", true) && body.contains("password", true)))
-                return State.PORTAL
-            null
+            interpretPublicHttp(headers, body)
         } catch (_: Exception) { null }
         finally { try { socket?.close() } catch (_: Exception) {} }
+    }
+    internal fun interpretPublicHttp(headers: String, body: String): Result? {
+        val status = headers.substringBefore("\r\n")
+        if (status.contains(" 200 ") && body.contains("colo=") && body.contains("http="))
+            return Result(State.ONLINE, "Public internet verified on Wi-Fi (one IP-only request)")
+
+        val location = headers.lineSequence()
+            .firstOrNull { it.startsWith("Location:", true) }?.substringAfter(':')?.trim()
+        val path = FortinetPortal.redirectPath(location, body)
+        if (path != null || body.contains("Firewall Authentication", true) ||
+            (body.contains("name=\"magic\"", true) && body.contains("password", true))) {
+            return Result(State.PORTAL, "Sign-in required on this Wi-Fi", path)
+        }
+        return null
     }
 }
