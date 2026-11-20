@@ -11,6 +11,20 @@ internal object FortinetPortal {
         """http://172\.16\.2\.1:1000/[^\s"'<>\\]+""", RegexOption.IGNORE_CASE
     )
     private val pathCharacters = Regex("[a-zA-Z0-9/._-]+")
+    private val hiddenBlocks = Regex("""<script\b[^>]*>.*?</script\s*>|<style\b[^>]*>.*?</style\s*>|<!--.*?-->""",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    private val htmlTags = Regex("""<[^>]+>""")
+    private val whitespace = Regex("""\s+""")
+    private val rejectionMessages = listOf(
+        "invalid password", "invalid username", "authentication failed", "login failed",
+        "incorrect password", "incorrect username", "invalid credentials", "incorrect credentials"
+    )
+
+    fun rejectsCredentials(html: String): Boolean {
+        val text = html.replace(hiddenBlocks, " ").replace(htmlTags, " ")
+            .replace("&nbsp;", " ").replace(whitespace, " ")
+        return rejectionMessages.any { text.contains(it, ignoreCase = true) }
+    }
 
     fun requestPath(link: String, fromGateway: Boolean = false): String? {
         val uri = runCatching { URI(link.trim()) }.getOrNull() ?: return null

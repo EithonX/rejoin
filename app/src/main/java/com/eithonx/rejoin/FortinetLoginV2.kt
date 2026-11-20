@@ -257,9 +257,7 @@ object FortinetLoginV2 {
             }
         }
         val body = reply.body
-        val rejected = listOf("invalid password", "invalid username", "authentication failed",
-            "login failed", "incorrect password", "incorrect username", "invalid credentials",
-            "incorrect credentials", "invalid username or password").any { body.contains(it, true) }
+        val rejected = FortinetPortal.rejectsCredentials(body)
         val keepalive = body.contains("keepalive", true)
         val stillLogin = body.contains("Firewall Authentication", true)
         return Outcome(if (rejected) Submission.REJECTED else Submission.SENT,

@@ -10,7 +10,11 @@ Rejoin keeps the Wi-Fi names and access point identifiers you save, your login a
 
 - **Campus sign-in.** If you opt in to HTTP sign-in, Rejoin sends your saved username and password to Chandigarh University’s FortiGate portal over the selected Wi-Fi during manual and automatic sign-in. The portal uses HTTP. Someone who can intercept the traffic can read the credentials as they are sent.
 - **Connection checks.** Rejoin contacts Cloudflare to check internet access. Some captive portal checks contact Google connectivity endpoints. These requests carry standard network information such as your IP address and do not include saved credentials.
-- **Updates.** Rejoin checks GitHub Releases at most once a day when opened, and when you request a check. The request does not contain your saved Wi-Fi details or login. An APK downloads only when you choose to install an update, and Rejoin verifies it before handing it to Android.
+- **Updates.** Rejoin checks GitHub Releases when opened and when you request a check. Repeat automatic checks are limited to once every five minutes while using the app, with a retry when Wi-Fi comes back online. The request does not contain your saved Wi-Fi details or login. An APK downloads only when you choose to install an update, and Rejoin verifies it before handing it to Android.
+
+## Troubleshooting reports
+
+You can copy a connection report from Troubleshooting. It includes Android connection and permission status and recent check times. It leaves out Wi-Fi names, access point identifiers, logins, and portal tokens. Rejoin only writes the report to your clipboard when you tap Copy report.
 
 ## Delete saved data
 

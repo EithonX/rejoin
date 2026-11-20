@@ -1,6 +1,8 @@
 package com.eithonx.rejoin
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -24,6 +26,11 @@ class FortinetPortalTest {
         assertEquals(InternetVerifier.State.UNSUPPORTED_PORTAL, changed?.state)
         assertNull(secure?.portalPath)
         assertNull(changed?.portalPath)
+    }
+
+    @Test fun ignoresRejectionMessagesInScripts() {
+        assertFalse(FortinetPortal.rejectsCredentials("<script>const message = 'invalid password';</script>"))
+        assertTrue(FortinetPortal.rejectsCredentials("<p>Invalid <strong>username</strong> or password.</p>"))
     }
 
     @Test fun validatesFormActionsAndDestinations() {
