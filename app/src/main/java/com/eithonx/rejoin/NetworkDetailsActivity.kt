@@ -1,12 +1,19 @@
 package com.eithonx.rejoin
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -16,6 +23,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 
 class NetworkDetailsActivity : RejoinActivity() {
@@ -41,9 +50,9 @@ class NetworkDetailsActivity : RejoinActivity() {
             ListGroup {
                 ActionRow(login?.label ?: "No login selected",
                     when {
-                        profile.loginId == null && login != null -> "Uses default login"
+                        profile.loginId == null && login != null -> "Follows default"
                         profile.loginId != null && login == null -> "Assigned login unavailable"
-                        else -> null
+                        else -> login?.username
                     }, R.drawable.ic_key) {
                     if (accounts.isEmpty()) open(LoginEditorActivity::class.java)
                     else chooseLogin(profile, accounts, defaultId)
@@ -81,31 +90,63 @@ class NetworkDetailsActivity : RejoinActivity() {
         }
     }
 
-    private fun chooseLogin(profile: TrustedNetworks.Profile, accounts: List<CredentialVault.SavedLogin>,
-                            defaultId: String?) {
-        val default = accounts.find { it.id == defaultId }
-        fun assign(loginId: String?) {
-            if (TrustedNetworks.assignLogin(this, profile.id, loginId)) {
-                ActivityHistory.record(this, "Wi-Fi login updated")
-                revision++
-            } else notice("Couldn’t change login", "Try again.")
-        }
+    private fun chooseLogin(
+        profile: TrustedNetworks.Profile,
+        accounts: List<CredentialVault.SavedLogin>,
+        defaultId: String?
+    ) {
         showDialog { dismiss ->
+            var assignment by remember { mutableStateOf(profile.loginId) }
+            var failed by remember { mutableStateOf(false) }
+            val selectedId = assignment ?: defaultId
             AlertDialog(
                 onDismissRequest = dismiss,
-                title = { Text("Choose a login") },
+                title = { Text("Login for this Wi-Fi") },
                 text = {
-                    Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-                        ActionRow("Use default", default?.label) { dismiss(); assign(null) }
-                        accounts.forEach { account ->
-                            ActionRow(account.label, "Selected".takeIf { account.id == profile.loginId }) {
-                                dismiss()
-                                assign(account.id)
+                    Column(
+                        Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (defaultId != null) {
+                            val followsDefault = assignment == null
+                            ListItem(
+                                modifier = Modifier.toggleable(followsDefault, role = Role.Switch) {
+                                    assignment = if (it) null else defaultId
+                                    failed = false
+                                },
+                                headlineContent = { Text("Follow default login") },
+                                supportingContent = { Text("Switches when you change your default.") },
+                                trailingContent = { Switch(checked = followsDefault, onCheckedChange = null) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                            )
+                            HorizontalDivider()
+                        }
+                        Column(Modifier.selectableGroup()) {
+                            accounts.forEachIndexed { index, account ->
+                                if (index > 0) HorizontalDivider()
+                                SavedLoginRow(account, account.id == defaultId, account.id == selectedId) {
+                                    if (account.id != selectedId) {
+                                        assignment = account.id
+                                        failed = false
+                                    }
+                                }
                             }
                         }
+                        if (failed) Text("Couldn’t save this choice.", color = MaterialTheme.colorScheme.error)
                     }
                 },
-                confirmButton = { TextButton(onClick = dismiss) { Text("Cancel") } }
+                dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+                confirmButton = {
+                    TextButton(enabled = assignment != profile.loginId && accounts.any { it.id == selectedId },
+                        onClick = {
+                            if (TrustedNetworks.assignLogin(this, profile.id, assignment)) {
+                                ActivityHistory.record(this, "Wi-Fi login updated")
+                                revision++
+                                dismiss()
+                            } else failed = true
+                        }
+                    ) { Text("Save") }
+                }
             )
         }
     }
