@@ -1,8 +1,18 @@
 package com.eithonx.rejoin
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
+import android.os.Build
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +44,11 @@ class DiagnosticsActivity : RejoinActivity() {
                     HorizontalDivider()
                     ActionRow("Open sign-in page", "Continue in your browser", onClick = ::openSignInPage)
                 }
+                SectionLabel("Diagnostics")
+                ListGroup {
+                    ActionRow("Connection report", "View or copy troubleshooting details",
+                        R.drawable.ic_activity, onClick = ::showReport)
+                }
                 SectionLabel("Advanced")
                 ListGroup {
                     ActionRow("Log out of Wi-Fi", "May disconnect other devices", onClick = ::confirmLogout)
@@ -41,6 +56,34 @@ class DiagnosticsActivity : RejoinActivity() {
                     ActionRow("Erase saved logins", "Delete passwords from this device", onClick = ::confirmErase)
                 }
             }
+        }
+    }
+
+    private fun showReport() {
+        val report = ConnectionDiagnostics.report(this)
+        showDialog { dismiss ->
+            AlertDialog(
+                onDismissRequest = dismiss,
+                title = { Text("Connection report") },
+                text = {
+                    Column(
+                        Modifier.verticalScroll(rememberScrollState())
+                    ) { BodyText(report) }
+                },
+                dismissButton = { TextButton(onClick = dismiss) {
+                    Text("Close")
+                } },
+                confirmButton = {
+                    TextButton(onClick = {
+                        getSystemService(ClipboardManager::class.java)
+                            .setPrimaryClip(ClipData.newPlainText("Rejoin connection report", report))
+                        if (Build.VERSION.SDK_INT < 33) {
+                            Toast.makeText(this, "Report copied", Toast.LENGTH_SHORT).show()
+                        }
+                        dismiss()
+                    }) { Text("Copy report") }
+                }
+            )
         }
     }
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.0-rc3
+
+- Open the sign-in address detected on saved Wi-Fi and pause automatic attempts when a saved login is rejected.
+- Hand off HTTPS portals and certificate warnings to Android. Check the connection when you return to Rejoin.
+- Show each saved login once and let a Wi-Fi network follow the default login.
+- Check GitHub for updates on open and show available versions on Home. Keep the release metadata used by RC1 and RC2.
+- Copy a connection report from Troubleshooting without including credentials or portal tokens.
+
 ## 2.4.0-rc2
 
 - Start an early background check when Android detects a captive portal. Keep the scheduled fallback for silent session expiry.

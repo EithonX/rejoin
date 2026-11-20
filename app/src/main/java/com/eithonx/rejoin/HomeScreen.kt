@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
@@ -27,6 +28,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -81,16 +84,39 @@ internal fun HomeScreen(
         }
     }) {
         ConnectionCard(ui.status, ui.network)
+        if (updateVersion != null) UpdateBanner(updateVersion, onUpdate)
         ui.issue?.let { PermissionNotice(it) { onIssue(it) } }
-        if (updateVersion != null) ListGroup {
-            ActionRow("Update available", "Version $updateVersion", R.drawable.ic_about, onUpdate)
-        }
         SectionLabel("Connection")
         ListGroup {
             ActionRow("Auto sign-in", ui.automation, R.drawable.ic_shield, onAutomation)
             HorizontalDivider(Modifier.padding(horizontal = 16.dp))
             ActionRow("Activity", ui.lastChecked ?: "Sign-ins and changes", R.drawable.ic_activity, onActivity)
         }
+    }
+}
+
+@Composable
+private fun UpdateBanner(version: String, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+        shape = MaterialTheme.shapes.large,
+        color = colors.secondaryContainer
+    ) {
+        ListItem(
+            headlineContent = { Text("Update available") },
+            supportingContent = { Text("View version $version") },
+            leadingContent = { Icon(painterResource(R.drawable.ic_update), null) },
+            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+            colors = ListItemDefaults.colors(
+                containerColor = Color.Transparent,
+                headlineColor = colors.onSecondaryContainer,
+                supportingColor = colors.onSecondaryContainer,
+                leadingIconColor = colors.onSecondaryContainer,
+                trailingIconColor = colors.onSecondaryContainer
+            )
+        )
     }
 }
 

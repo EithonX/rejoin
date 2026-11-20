@@ -88,7 +88,6 @@ class AboutActivity : RejoinActivity() {
                     ReleaseUpdates.Check.IDLE, ReleaseUpdates.Check.AVAILABLE -> null
                     ReleaseUpdates.Check.CHECKING -> "Checking GitHub…"
                     ReleaseUpdates.Check.CURRENT -> "You’re up to date."
-                    ReleaseUpdates.Check.INCOMPATIBLE -> "The latest release needs a newer Android version."
                     ReleaseUpdates.Check.NO_RELEASE -> "No public release is available yet."
                     ReleaseUpdates.Check.UNAVAILABLE -> "Couldn’t reach GitHub. Try again when you’re online."
                 }
@@ -137,6 +136,8 @@ class AboutActivity : RejoinActivity() {
             } else when (error) {
                 ReleaseUpdates.DownloadError.VERIFICATION ->
                     notice("Update couldn’t be verified", "The APK did not match this installation or release.")
+                ReleaseUpdates.DownloadError.INCOMPATIBLE ->
+                    notice("Update unavailable for this phone", "This release needs a newer Android version.")
                 else -> notice("Download couldn’t finish", "Check your connection and try again.")
             }
         }

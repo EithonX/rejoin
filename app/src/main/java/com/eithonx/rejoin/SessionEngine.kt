@@ -2,11 +2,14 @@ package com.eithonx.rejoin
 
 import android.content.Context
 import android.net.Network
+import com.eithonx.rejoin.InternetVerifier.State
+import com.eithonx.rejoin.RecoveryPolicy.Outcome
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 
 object SessionEngine {
-    data class Result(val message: String, val outcome: RecoveryPolicy.Outcome, val busy: Boolean = false)
+    data class Result(val message: String, val outcome: Outcome, val busy: Boolean = false)
+
     private val running = AtomicBoolean(false)
     private const val COOLDOWN_MS = 20 * 60_000L
 
@@ -16,129 +19,145 @@ object SessionEngine {
         explicitlyLoggedOut: Boolean = false,
         progress: (String) -> Unit = {},
         requiredNetwork: Network? = null,
-        requiredProfileId: String? = null
+        requiredProfileId: String? = null,
+        onSubmitting: () -> Unit = {}
     ): Result {
         if (!running.compareAndSet(false, true)) {
-            return Result("Another connection check is running", RecoveryPolicy.Outcome.UNKNOWN, busy = true)
+            return Result("Another connection check is running", Outcome.UNKNOWN, busy = true)
         }
         val prefs = context.getSharedPreferences("profile", Context.MODE_PRIVATE)
-        val now = System.currentTimeMillis()
+        var checkedWifi: WifiProbe.Snapshot? = null
         var checkedProfileId: String? = null
+        var state = State.UNKNOWN
 
-        fun finish(message: String): Result {
-            val outcome = RecoveryPolicy.fromMessage(message)
-            val event = when {
-                message.contains("VERIFIED", true) ||
-                    message.contains("restored", true) -> "Internet restored"
-                message.contains("online", true) ||
-                    message.contains("healthy", true) -> "Connection healthy"
-                message.contains("cooldown", true) -> "Recovery on cooldown"
-                message.contains("portal", true) -> "Captive portal detected"
-                message.contains("trusted Wi-Fi", true) -> "Outside trusted network"
+        fun finish(outcome: Outcome, message: String): Result {
+            val wifi = checkedWifi
+            val profileId = checkedProfileId
+            if (wifi != null && profileId != null && WifiProbe.current(context, wifi.network) == wifi) {
+                val editor = prefs.edit()
+                ConnectionObservation(state, outcome).write(editor, profileId, wifi, message)
+                editor.apply()
+            }
+            val event = when (outcome) {
+                Outcome.HEALTHY -> "Connection healthy"
+                Outcome.RECOVERED -> "Internet restored"
+                Outcome.REJECTED -> "Saved Wi-Fi login rejected"
+                Outcome.CERTIFICATE_ERROR -> "Certificate verification failed"
+                Outcome.SECURE_PORTAL -> "Android Wi-Fi sign-in needed"
+                Outcome.UNSUPPORTED_PORTAL -> "Sign-in address unrecognized"
+                Outcome.PORTAL_FORM_FAILED -> "Sign-in page unavailable"
+                Outcome.VERIFY_FAILED -> "Sign-in couldn’t be confirmed"
                 else -> null
             }
-            prefs.edit()
-                .putString("last_result", message)
-                .putString("last_profile_id", checkedProfileId)
-                .putLong("last_checked", System.currentTimeMillis())
-                .putString("last_class", when (outcome) {
-                    RecoveryPolicy.Outcome.HEALTHY -> "healthy"
-                    RecoveryPolicy.Outcome.RECOVERED -> "restored"
-                    RecoveryPolicy.Outcome.PORTAL -> "portal"
-                    RecoveryPolicy.Outcome.FAILED -> "failed"
-                    RecoveryPolicy.Outcome.UNKNOWN -> "unknown"
-                })
-                .apply()
             if (event != null) ActivityHistory.record(context, event)
             return Result(message, outcome)
         }
 
         try {
             if (!userInitiated && !RecoveryPrefs.enabled(context))
-                return finish("Automatic recovery disabled")
-            if (!userInitiated && now < prefs.getLong("manual_test_until", 0L))
-                return finish("Manual session test active; automatic work paused")
+                return finish(Outcome.UNKNOWN, "Automatic sign-in is off")
+            if (!userInitiated && System.currentTimeMillis() < prefs.getLong("manual_test_until", 0L))
+                return finish(Outcome.UNKNOWN, "Manual session test active")
 
             val snapshot = WifiProbe.current(context, requiredNetwork)
-                ?: return finish("Trusted Wi-Fi identity unavailable; check background location access")
+                ?: return finish(Outcome.UNKNOWN, "Wi-Fi identity unavailable")
             val trusted = TrustedNetworks.find(context, snapshot)
-                ?: return finish("Not a trusted Wi-Fi; no request sent")
-            if (requiredProfileId != null && trusted.id != requiredProfileId) {
-                return finish("Trusted Wi-Fi changed; login cancelled")
-            }
+                ?: return finish(Outcome.UNKNOWN, "Outside saved Wi-Fi")
+            if (requiredProfileId != null && trusted.id != requiredProfileId)
+                return finish(Outcome.UNKNOWN, "Saved Wi-Fi changed")
+            checkedWifi = snapshot
             checkedProfileId = trusted.id
 
-            progress("Checking Wi-Fi access")
+            progress("Checking internet on the saved Wi-Fi")
             val initial = InternetVerifier.check(context, snapshot.network)
-            if (initial.state == InternetVerifier.State.ONLINE) {
+            state = initial.state
+            val initialOutcome = ConnectionObservation.outcomeFor(state)
+            if (state == State.ONLINE) {
                 prefs.edit().remove("manual_test_until").apply()
-                return finish("Internet online; no login necessary")
+                return finish(Outcome.HEALTHY, "Internet online")
             }
-            if (initial.state != InternetVerifier.State.PORTAL && !explicitlyLoggedOut) {
-                return finish("Network state uncertain; no password sent: " + initial.details)
-            }
+            if (initialOutcome.stopsAutomaticSubmission) return finish(initialOutcome, initial.details)
+            if (state != State.PORTAL && !explicitlyLoggedOut) return finish(initialOutcome, initial.details)
             if (!prefs.getBoolean("http_opt_in", false))
-                return finish("Sign-in permission needed")
-            if (!CredentialVault.hasLoginFor(context, trusted))
-                return finish("No saved login for " + trusted.label + "; open Settings")
-
-            // Only background attempts are rate limited. User-initiated attempts
-            // require an explicit tap and are always single-shot.
-            if (!userInitiated && System.currentTimeMillis() <
-                prefs.getLong("next_allowed_" + trusted.id, 0L))
-                return finish("Portal detected; retry cooldown active")
-            if (!userInitiated) {
-                progress("Checking whether another device has restored internet")
-                Thread.sleep(Random.nextLong(2_000L, 7_001L))
-                val again = InternetVerifier.check(context, snapshot.network)
-                if (again.state == InternetVerifier.State.ONLINE)
-                    return finish("Internet online; another device restored access")
-                if (again.state != InternetVerifier.State.PORTAL)
-                    return finish("Portal no longer confirmed; no password sent")
-            }
-
-            // Validate identity again immediately before submitting credentials.
-            val current = WifiProbe.current(context, snapshot.network)
-                ?: return finish("Trusted Wi-Fi changed; login cancelled")
-            if (TrustedNetworks.find(context, current)?.id != trusted.id)
-                return finish("Trusted Wi-Fi changed; login cancelled")
+                return finish(Outcome.PORTAL, "Sign-in permission needed")
             val account = CredentialVault.resolve(context, trusted)
-                ?: return finish("Saved login unavailable for " + trusted.label)
+                ?: return finish(Outcome.PORTAL, "No saved login for this Wi-Fi")
+            if (CredentialVault.wasRejected(context, account))
+                return finish(Outcome.REJECTED, "The portal rejected this saved login")
+
+            var portalPath = initial.portalPath
             if (!userInitiated) {
-                if (!RecoveryPrefs.enabled(context)) return finish("Automatic recovery disabled")
-                prefs.edit().putLong("next_allowed_" + trusted.id, System.currentTimeMillis() + COOLDOWN_MS)
-                    .commit()
+                val sinceAttempt = System.currentTimeMillis() - CredentialVault.lastAttempt(context, account)
+                if (sinceAttempt in 0L until COOLDOWN_MS)
+                    return finish(Outcome.COOLDOWN, "Waiting for the next sign-in attempt")
+                if (portalPath == null) {
+                    progress("Confirming the sign-in page")
+                    Thread.sleep(Random.nextLong(2_000L, 7_001L))
+                    val confirmed = InternetVerifier.check(context, snapshot.network)
+                    state = confirmed.state
+                    if (state != State.PORTAL)
+                        return finish(ConnectionObservation.outcomeFor(state), confirmed.details)
+                    portalPath = confirmed.portalPath
+                }
             }
-            prefs.edit().putLong("last_attempt", System.currentTimeMillis())
-                .putLong("login_attempts_total", prefs.getLong("login_attempts_total", 0L) + 1L)
-                .apply()
 
-            progress("Signing in")
-            val submitted = FortinetLoginV2.submitOnce(
-                context, snapshot.network, account.username, account.password, progress
-            )
-            if (!submitted.attempted)
-                return finish("Sign-in not submitted: " + submitted.summary)
+            val submission = FortinetLoginV2.submitOnce(
+                context, snapshot.network, account.username, account.password, progress, portalPath
+            ) {
+                val current = WifiProbe.current(context, snapshot.network)
+                val profile = current?.let { TrustedNetworks.find(context, it) }
+                val latest = profile?.let { CredentialVault.resolve(context, it) }
+                val canSubmit = current == snapshot && profile?.id == trusted.id &&
+                    latest != null && latest.id == account.id && latest.revision == account.revision &&
+                    prefs.getBoolean("http_opt_in", false) && (userInitiated || RecoveryPrefs.enabled(context))
+                if (canSubmit) {
+                    CredentialVault.recordAttempt(context, account, System.currentTimeMillis())
+                    onSubmitting()
+                }
+                canSubmit
+            }
+            when (submission.status) {
+                FortinetLoginV2.Submission.SECURE_PORTAL -> {
+                    state = State.SECURE_PORTAL
+                    return finish(Outcome.SECURE_PORTAL, submission.summary)
+                }
+                FortinetLoginV2.Submission.UNSUPPORTED_PORTAL -> {
+                    state = State.UNSUPPORTED_PORTAL
+                    return finish(Outcome.UNSUPPORTED_PORTAL, submission.summary)
+                }
+                FortinetLoginV2.Submission.CANCELLED -> return finish(Outcome.UNKNOWN, submission.summary)
+                FortinetLoginV2.Submission.FORM_UNAVAILABLE ->
+                    return finish(Outcome.PORTAL_FORM_FAILED, submission.summary)
+                FortinetLoginV2.Submission.REJECTED -> {
+                    state = State.PORTAL
+                    CredentialVault.recordRejection(context, account, rejected = true)
+                    return finish(Outcome.REJECTED, submission.summary)
+                }
+                FortinetLoginV2.Submission.SENT -> Unit
+            }
 
-            progress("Verifying connection")
+            progress("Verifying internet after sign-in")
             Thread.sleep(1_200L)
             val confirmed = InternetVerifier.check(context, snapshot.network)
-            if (confirmed.state == InternetVerifier.State.ONLINE) {
+            state = confirmed.state
+            if (state == State.ONLINE) {
+                CredentialVault.recordRejection(context, account, rejected = false)
                 prefs.edit()
                     .putLong("last_success", System.currentTimeMillis())
                     .putLong("last_success_" + trusted.id, System.currentTimeMillis())
                     .remove("manual_test_until")
                     .apply()
                 NetworkStatusHint.requestAfterVerifiedOnline(context)
-                return finish("LOGIN VERIFIED — internet restored")
+                return finish(Outcome.RECOVERED, "Internet restored")
             }
-            return finish("Sign-in submitted; internet verification inconclusive. " +
-                submitted.summary + "; " + confirmed.details + ". No automatic retry now.")
+            val confirmedOutcome = ConnectionObservation.outcomeFor(state)
+            if (confirmedOutcome.stopsAutomaticSubmission) return finish(confirmedOutcome, confirmed.details)
+            return finish(Outcome.VERIFY_FAILED, submission.summary + ". " + confirmed.details)
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
-            return finish("Check interrupted; no immediate retry")
+            return finish(Outcome.UNKNOWN, "Check interrupted")
         } catch (e: Exception) {
-            return finish("Connection check failed (" + e.javaClass.simpleName + ")")
+            return finish(Outcome.FAILED, "Connection check failed (" + e.javaClass.simpleName + ")")
         } finally {
             running.set(false)
         }
